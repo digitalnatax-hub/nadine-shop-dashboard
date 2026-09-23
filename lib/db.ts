@@ -28,11 +28,13 @@ export async function ensureDatabaseSchema() {
   const products = db.collection('products')
   const sales = db.collection('sales')
   const debts = db.collection('debts')
+  const pettyCash = db.collection('petty_cash')
 
   await users.createIndex({ username: 1 }, { unique: true })
   await products.createIndex({ name: 1 })
   await sales.createIndex({ id: 1 }, { unique: true })
   await debts.createIndex({ name: 1 })
+  await pettyCash.createIndex({ date: 1 })
 
   const userCount = await users.countDocuments()
   if (userCount === 0) {

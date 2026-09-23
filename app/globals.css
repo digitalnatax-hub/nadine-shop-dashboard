@@ -49,3 +49,34 @@ body { background:linear-gradient(135deg,#f8f9fa 0%,#eef5f5 100%); }
 .cart-actions > button:hover { color:var(--red); }
 .modal { box-shadow:0 24px 80px rgba(6,54,80,.22); border:1px solid rgba(10,72,111,.12); }
 @media(max-width:720px){ .cart-actions { gap:6px; flex-wrap:wrap; justify-content:flex-end; } .cart-actions > strong { order:-1; width:100%; text-align:right; } .bar-col:after { font-size:10px; } }
+
+.stock-check-list { display:flex; flex-direction:column; gap:14px; }
+.stock-check-row { display:flex; align-items:center; gap:12px; padding:12px; border:1px solid #edf1f3; border-radius:10px; background:#fbfdfd; }
+.stock-check-icon { width:34px; height:34px; flex:none; display:grid; place-items:center; border-radius:9px; color:var(--teal); background:#e5f5f2; }
+.stock-check-info { min-width:0; flex:1; }
+.stock-check-info strong,.stock-check-info span { display:block; }
+.stock-check-info strong { font-size:13px; }
+.stock-check-info span { color:var(--muted); font-size:11px; margin-top:3px; }
+.stock-check-info i { display:block; height:5px; margin-top:8px; border-radius:999px; background:#e7eeee; overflow:hidden; }
+.stock-check-info i b { display:block; height:100%; border-radius:inherit; background:var(--teal); }
+.stock-check-info i b.low { background:var(--red); }
+.inventory-actions { display:flex; gap:8px; margin-top:15px; }
+.inventory-actions button { flex:1; justify-content:center; padding:9px 10px; font-size:12px; }
+.danger-btn { display:inline-flex; align-items:center; gap:7px; border:1px solid #f2cccc; border-radius:8px; color:var(--red); background:#fff8f8; font-weight:700; }
+.danger-btn:hover { background:#ffeded; }
+.report-controls { display:flex; align-items:end; gap:14px; padding:15px; margin-bottom:18px; }
+.report-controls label { display:flex; flex-direction:column; gap:7px; color:var(--muted); font-size:11px; font-weight:800; }
+.report-controls select,.report-controls input { height:40px; min-width:155px; border:1px solid var(--border); border-radius:8px; padding:0 10px; color:var(--foreground); background:#fff; }
+.report-controls .primary-btn { margin-left:auto; }
+.financial-document { padding:24px; margin-bottom:22px; }
+.document-head { display:flex; justify-content:space-between; align-items:flex-start; border-bottom:1px solid var(--border); padding-bottom:18px; }
+.document-head h2 { margin:7px 0 4px; font-size:20px; }
+.document-head p { color:var(--muted); margin:0; font-size:12px; }
+.document-head > svg { color:var(--teal); width:25px; height:25px; }
+.document-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:1px; margin-top:18px; background:var(--border); border:1px solid var(--border); }
+.document-grid div { background:#fff; padding:15px; }
+.document-grid span,.document-grid strong { display:block; }
+.document-grid span { color:var(--muted); font-size:11px; }
+.document-grid strong { margin-top:7px; font-size:16px; }
+@media(max-width:720px){ .report-controls { align-items:stretch; flex-direction:column; } .report-controls .primary-btn { margin-left:0; } .document-grid { grid-template-columns:1fr 1fr; } .stock-check-row .badge { display:none; } }
+@media print{ body *{visibility:hidden!important}.receipt,.receipt *,.financial-document,.financial-document *{visibility:visible!important}.receipt,.financial-document{position:absolute;left:0;top:0;width:100%;border:0;box-shadow:none}.financial-document{padding:0}.report-controls,.report-kpis,.table-panel,.page-heading,.topbar,.sidebar{display:none!important} }

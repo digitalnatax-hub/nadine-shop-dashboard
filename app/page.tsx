@@ -10,18 +10,22 @@ import {
   ChevronRight,
   CircleDollarSign,
   FileText,
+  KeyRound,
   LayoutDashboard,
   LogOut,
   Menu,
   Package,
   Plus,
+  Pencil,
   Printer,
   RefreshCw,
   Search,
   Settings,
   ShoppingCart,
   TrendingUp,
+  Trash2,
   Users,
+  Wallet,
   X,
 } from 'lucide-react'
 
@@ -53,6 +57,13 @@ type Debt = {
   original: number
   kind: 'customer' | 'supplier'
   due: string
+}
+
+type PettyCash = {
+  id: string
+  date: string
+  amount: number
+  reason: string
 }
 
 type CartItem = {
@@ -89,9 +100,13 @@ export default function Page() {
   const [products, setProducts] = useState<Product[]>([])
   const [sales, setSales] = useState<Sale[]>([])
   const [debts, setDebts] = useState<Debt[]>([])
+  const [pettyCash, setPettyCash] = useState<PettyCash[]>([])
   const [showProduct, setShowProduct] = useState(false)
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null)
   const [showSale, setShowSale] = useState(false)
   const [showDebt, setShowDebt] = useState(false)
+  const [showPettyCash, setShowPettyCash] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
   const [receipt, setReceipt] = useState<Sale | null>(null)
   const [search, setSearch] = useState('')
   const [includeVat, setIncludeVat] = useState(true)
@@ -111,6 +126,7 @@ export default function Page() {
     setProducts(payload.products ?? [])
     setSales(payload.sales ?? [])
     setDebts(payload.debts ?? [])
+    setPettyCash(payload.pettyCash ?? [])
   }
 
   useEffect(() => {
@@ -122,16 +138,21 @@ export default function Page() {
   const totals = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10)
     const todaySales = sales.filter((entry) => entry.date === today)
+    const todayPettyCash = pettyCash.filter((entry) => entry.date === today)
+    const todayVat = todaySales.reduce((sum, entry) => sum + (entry.vat ? Number(entry.total) - Number(entry.total) / 1.18 : 0), 0)
+    const todayPettyTotal = todayPettyCash.reduce((sum, entry) => sum + Number(entry.amount), 0)
 
     return {
       sales: sales.reduce((sum, entry) => sum + Number(entry.total), 0),
       profit: sales.reduce((sum, entry) => sum + Number(entry.profit), 0),
-      todaySales: todaySales.reduce((sum, entry) => sum + Number(entry.total), 0),
-      todayProfit: todaySales.reduce((sum, entry) => sum + Number(entry.profit), 0),
+      todaySales: todaySales.reduce((sum, entry) => sum + (entry.vat ? Number(entry.total) / 1.18 : Number(entry.total)), 0),
+      todayProfit: todaySales.reduce((sum, entry) => sum + Number(entry.profit), 0) - todayPettyTotal,
+      todayVat,
+      todayPettyTotal,
       owed: debts.filter((entry) => entry.kind === 'customer').reduce((sum, entry) => sum + Number(entry.amount), 0),
       owe: debts.filter((entry) => entry.kind === 'supplier').reduce((sum, entry) => sum + Number(entry.amount), 0),
     }
-  }, [sales, debts])
+  }, [sales, debts, pettyCash])
 
   const lowStock = products.filter((product) => product.stock <= product.min)
 
@@ -162,9 +183,15 @@ export default function Page() {
       const existing = current.find((item) => item.product.id === product.id)
       if (existing) {
         const nextQty = normalizeQuantity(existing.qty + step, product.unit)
+        if (nextQty > product.stock) {
+          return current
+        }
         return current.map((item) =>
           item.product.id === product.id ? { ...item, qty: nextQty } : item,
         )
+      }
+      if (product.stock <= 0) {
+        return current
       }
       return [...current, { product, qty: normalizeQuantity(1, product.unit) }]
     })
@@ -252,6 +279,46 @@ export default function Page() {
     setShowProduct(false)
   }
 
+  const updateProduct = async (id: number, input: { name: string; category: string; stock: number; unit: string; buy: number; sell: number; min: number }) => {
+    const response = await fetch(`/api/products/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    })
+    const payload = await response.json()
+    if (!response.ok || !payload.ok) {
+      throw new Error(payload.error ?? 'Unable to update product.')
+    }
+    setProducts((current) => current.map((product) => product.id === id ? payload.product : product))
+    setEditingProduct(null)
+  }
+
+  const deleteProduct = async (product: Product) => {
+    if (!window.confirm(`Delete ${product.name}? This cannot be undone.`)) {
+      return
+    }
+    const response = await fetch(`/api/products/${product.id}`, { method: 'DELETE' })
+    const payload = await response.json()
+    if (!response.ok || !payload.ok) {
+      setLoginError(payload.error ?? 'Unable to delete product.')
+      return
+    }
+    setProducts((current) => current.filter((entry) => entry.id !== product.id))
+  }
+
+  const changePassword = async (currentPassword: string, newPassword: string) => {
+    const response = await fetch('/api/auth/password', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, currentPassword, newPassword }),
+    })
+    const payload = await response.json()
+    if (!response.ok || !payload.ok) {
+      throw new Error(payload.error ?? 'Unable to change password.')
+    }
+    setShowPassword(false)
+  }
+
   const createDebt = async (input: { name: string; phone?: string; amount: number; kind: 'customer' | 'supplier'; due: string }) => {
     const response = await fetch('/api/debts', {
       method: 'POST',
@@ -274,11 +341,25 @@ export default function Page() {
     setShowDebt(false)
   }
 
+  const createPettyCash = async (input: { amount: number; reason: string; date: string }) => {
+    const response = await fetch('/api/petty-cash', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    })
+    const payload = await response.json()
+    if (!response.ok || !payload.ok) {
+      throw new Error(payload.error ?? 'Unable to save petty cash record.')
+    }
+    setPettyCash((current) => [payload.pettyCash, ...current])
+  }
+
   const handleLogout = () => {
     setLoggedIn(false)
     setProducts([])
     setSales([])
     setDebts([])
+    setPettyCash([])
     setPage('Dashboard')
   }
 
@@ -405,6 +486,10 @@ export default function Page() {
             <LogOut />
             Sign out
           </button>
+          <button className="nav-item" onClick={() => setShowPassword(true)}>
+            <KeyRound />
+            Change password
+          </button>
 
           <div className="user-chip">
             <div className="avatar">N</div>
@@ -446,25 +531,46 @@ export default function Page() {
             <SalesPage sales={sales} setShowSale={setShowSale} setReceipt={setReceipt} search={search} setSearch={setSearch} />
           )}
           {page === 'Inventory' && (
-            <Inventory products={products} setShowProduct={setShowProduct} search={search} setSearch={setSearch} />
+            <Inventory products={products} setShowProduct={setShowProduct} setEditingProduct={setEditingProduct} deleteProduct={deleteProduct} search={search} setSearch={setSearch} />
           )}
-          {page === 'Finances' && <FinancePage debts={debts} setShowDebt={setShowDebt} />}
-          {page === 'Reports' && <Reports products={products} sales={sales} totals={totals} />}
+          {page === 'Finances' && <FinancePage debts={debts} pettyCash={pettyCash} setShowDebt={setShowDebt} setShowPettyCash={() => setShowPettyCash(true)} />}
+          {page === 'Reports' && <Reports products={products} sales={sales} pettyCash={pettyCash} totals={totals} />}
         </main>
       </div>
 
       {showProduct && (
         <ProductModal
+          product={editingProduct}
           close={() => setShowProduct(false)}
           onSave={async (payload) => {
             try {
-              await createProduct(payload)
+              if (editingProduct) {
+                await updateProduct(editingProduct.id, payload)
+              } else {
+                await createProduct(payload)
+              }
             } catch (error) {
               setLoginError(error instanceof Error ? error.message : 'Unable to add product.')
             }
           }}
         />
       )}
+
+      {editingProduct && !showProduct && (
+        <ProductModal
+          product={editingProduct}
+          close={() => setEditingProduct(null)}
+          onSave={async (payload) => {
+            try {
+              await updateProduct(editingProduct.id, payload)
+            } catch (error) {
+              setLoginError(error instanceof Error ? error.message : 'Unable to update product.')
+            }
+          }}
+        />
+      )}
+
+      {showPassword && <PasswordModal close={() => setShowPassword(false)} onSave={changePassword} />}
 
       {showSale && (
         <SaleModal
@@ -489,6 +595,20 @@ export default function Page() {
               await createDebt(payload)
             } catch (error) {
               setLoginError(error instanceof Error ? error.message : 'Unable to add debt.')
+            }
+          }}
+        />
+      )}
+
+      {showPettyCash && (
+        <PettyCashModal
+          close={() => setShowPettyCash(false)}
+          onSave={async (payload) => {
+            try {
+              await createPettyCash(payload)
+              setShowPettyCash(false)
+            } catch (error) {
+              setLoginError(error instanceof Error ? error.message : 'Unable to save petty cash record.')
             }
           }}
         />
@@ -587,9 +707,9 @@ function Dashboard({ totals, lowStock, sales, products, setShowSale }: any) {
   const maxRevenue = Math.max(...weeklySales.map((entry) => entry.value), 1)
 
   const cards = [
-    { label: "Today's sales", value: money(totals.todaySales || 0), color: 'teal', icon: ShoppingCart, change: `${sales.length} sales` },
-    { label: "Today's profit", value: money(totals.todayProfit || 0), color: 'green', icon: TrendingUp, change: '+Live data' },
-    { label: 'Customers owe', value: money(totals.owed), color: 'amber', icon: Users, change: `${sales.length} sales` },
+    { label: "Today's sales (excl. VAT)", value: money(totals.todaySales || 0), color: 'teal', icon: ShoppingCart, change: `${sales.length} sales` },
+    { label: "Today's profit", value: money(totals.todayProfit || 0), color: 'green', icon: TrendingUp, change: 'After petty cash' },
+    { label: 'VAT payable', value: money(totals.todayVat || 0), color: 'amber', icon: CircleDollarSign, change: 'From included VAT' },
     { label: 'Low stock items', value: lowStock.length, color: 'red', icon: AlertTriangle, change: 'Needs attention' },
   ]
 
@@ -677,16 +797,22 @@ function Dashboard({ totals, lowStock, sales, products, setShowSale }: any) {
           <div className="panel-head">
             <div>
               <h2>Quick stock check</h2>
-              <p>Watch your reorder points</p>
+              <p>Prioritise products that need attention</p>
             </div>
+            <span className="count-badge teal-bg">{products.length}</span>
           </div>
-          <div className="mini-list">
-            {products.slice(0, 4).map((product: Product) => (
-              <div className="mini-row" key={product.id}>
-                <span>{product.name}</span>
-                <strong className={product.stock <= product.min ? 'negative' : ''}>{product.stock} {product.unit}</strong>
+          <div className="stock-check-list">
+            {products.length ? products.slice().sort((a: Product, b: Product) => (a.stock / Math.max(a.min, 1)) - (b.stock / Math.max(b.min, 1))).slice(0, 4).map((product: Product) => (
+              <div className="stock-check-row" key={product.id}>
+                <div className="stock-check-icon"><Package /></div>
+                <div className="stock-check-info">
+                  <strong>{product.name}</strong>
+                  <span>{product.stock} {product.unit} left · reorder at {product.min}</span>
+                  <i><b className={product.stock <= product.min ? 'low' : ''} style={{ width: `${Math.min(100, (product.stock / Math.max(product.min * 3, 1)) * 100)}%` }} /></i>
+                </div>
+                <span className={product.stock <= product.min ? 'badge warning' : 'badge success'}>{product.stock <= product.min ? 'Restock' : 'Healthy'}</span>
               </div>
-            ))}
+            )) : <div className="empty-state">No products have been added yet.</div>}
           </div>
         </div>
 
@@ -779,7 +905,7 @@ function SalesPage({ sales, setShowSale, setReceipt, search, setSearch }: any) {
   )
 }
 
-function Inventory({ products, setShowProduct, search, setSearch }: any) {
+function Inventory({ products, setShowProduct, setEditingProduct, deleteProduct, search, setSearch }: any) {
   const visibleProducts = products.filter((product: Product) => product.name.toLowerCase().includes(search.toLowerCase()))
 
   return (
@@ -828,6 +954,14 @@ function Inventory({ products, setShowProduct, search, setSearch }: any) {
                 Sell <strong>{money(product.sell)}</strong>
               </span>
             </div>
+            <div className="inventory-actions">
+              <button className="outline-btn" onClick={() => setEditingProduct(product)}>
+                <Pencil /> Edit
+              </button>
+              <button className="danger-btn" onClick={() => void deleteProduct(product)}>
+                <Trash2 /> Delete
+              </button>
+            </div>
           </div>
         ))}
       </div>
@@ -835,13 +969,13 @@ function Inventory({ products, setShowProduct, search, setSearch }: any) {
   )
 }
 
-function FinancePage({ debts, setShowDebt }: any) {
+function FinancePage({ debts, pettyCash, setShowDebt, setShowPettyCash }: any) {
   const customers = debts.filter((item: Debt) => item.kind === 'customer')
   const suppliers = debts.filter((item: Debt) => item.kind === 'supplier')
 
   return (
     <>
-      <Header title="Finances" subtitle="Keep track of money owed to you and payments you need to make." action="Add debt" onAction={() => setShowDebt(true)} />
+      <Header title="Finances" subtitle="Keep track of money owed to you, payments you need to make, and cash withdrawn for shop expenses." action="Add debt" onAction={() => setShowDebt(true)} />
       <div className="finance-summary">
         <div>
           <span>Money owed to you</span>
@@ -882,6 +1016,24 @@ function FinancePage({ debts, setShowDebt }: any) {
           ))}
         </div>
       </div>
+
+      <div className="panel petty-cash-panel">
+        <div className="panel-head">
+          <div>
+            <h2>Petty cash</h2>
+            <p>Withdrawals reduce the profit for their recorded date.</p>
+          </div>
+          <button className="outline-btn" onClick={setShowPettyCash}><Wallet /> Record withdrawal</button>
+        </div>
+        <div className="mini-list">
+          {pettyCash.length ? pettyCash.slice(0, 8).map((entry: PettyCash) => (
+            <div className="mini-row" key={entry.id}>
+              <span><strong>{entry.reason}</strong><small>{entry.date}</small></span>
+              <strong className="negative">−{money(entry.amount)}</strong>
+            </div>
+          )) : <div className="empty-state">No petty cash withdrawals recorded.</div>}
+        </div>
+      </div>
     </>
   )
 }
@@ -904,36 +1056,74 @@ function DebtRow({ entry }: any) {
   )
 }
 
-function Reports({ sales, products, totals }: any) {
+function Reports({ sales, products, pettyCash, totals }: any) {
+  const [range, setRange] = useState<'day' | 'week' | 'month'>('day')
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0, 10))
+
+  const report = useMemo(() => {
+    const anchor = new Date(`${selectedDate}T12:00:00`)
+    const start = new Date(anchor)
+    if (range === 'week') start.setDate(start.getDate() - 6)
+    if (range === 'month') start.setDate(1)
+    const startDate = start.toISOString().slice(0, 10)
+    const entries = sales.filter((entry: Sale) => entry.date >= startDate && entry.date <= selectedDate)
+    const revenue = entries.reduce((sum: number, entry: Sale) => sum + (entry.vat ? Number(entry.total || 0) / 1.18 : Number(entry.total || 0)), 0)
+    const vat = entries.reduce((sum: number, entry: Sale) => sum + (entry.vat ? Number(entry.total || 0) - Number(entry.total || 0) / 1.18 : 0), 0)
+    const salesProfit = entries.reduce((sum: number, entry: Sale) => sum + Number(entry.profit || 0), 0)
+    const pettyTotal = pettyCash.filter((entry: PettyCash) => entry.date >= startDate && entry.date <= selectedDate).reduce((sum: number, entry: PettyCash) => sum + Number(entry.amount || 0), 0)
+    const profit = salesProfit - pettyTotal
+    return { entries, revenue, vat, pettyTotal, profit, cost: Math.max(0, revenue - salesProfit), loss: Math.max(0, -profit), startDate }
+  }, [range, selectedDate, sales, pettyCash])
+
   return (
     <>
       <Header title="Reports & insights" subtitle="Understand what is driving your shop performance." />
-      <div className="report-tabs">
-        <button className="active">Profit & Loss</button>
-        <button>Sales report</button>
-        <button>Inventory report</button>
-        <button>Product performance</button>
+      <div className="report-controls panel">
+        <label>Report period
+          <select value={range} onChange={(event) => setRange(event.target.value as 'day' | 'week' | 'month')}>
+            <option value="day">Today</option>
+            <option value="week">Last 7 days</option>
+            <option value="month">This month</option>
+          </select>
+        </label>
+        <label>As of date
+          <input type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} />
+        </label>
+        <button className="primary-btn compact" onClick={() => window.print()}><Printer /> Print report</button>
       </div>
 
       <div className="report-kpis">
         <div>
           <span>Total revenue</span>
-          <strong>{money(totals.sales)}</strong>
-          <small className="positive">
-            <TrendingUp /> 12.5% vs last period
-          </small>
+          <strong>{money(report.revenue)}</strong>
+          <small>{report.entries.length} sale{report.entries.length === 1 ? '' : 's'} in period</small>
         </div>
         <div>
           <span>Cost of goods</span>
-          <strong>{money(Math.max(0, totals.sales - totals.profit))}</strong>
-          <small>71.4% of revenue</small>
+          <strong>{money(report.cost)}</strong>
+          <small>Cost of goods sold</small>
         </div>
         <div>
           <span>Gross profit</span>
-          <strong className="green-text">{money(totals.profit)}</strong>
-          <small className="positive">
-            <TrendingUp /> 8.2% vs last period
-          </small>
+          <strong className={report.profit >= 0 ? 'green-text' : 'negative'}>{money(report.profit)}</strong>
+          <small>{report.profit >= 0 ? 'Net profit' : `Loss: ${money(report.loss)}`}</small>
+        </div>
+      </div>
+
+      <div className="financial-document panel" id="financial-report">
+        <div className="document-head">
+          <div><span className="eyebrow">NADINE&apos;S SHOP</span><h2>Financial statement</h2><p>{report.startDate} to {selectedDate}</p></div>
+          <FileText />
+        </div>
+        <div className="document-grid">
+          <div><span>Sales revenue</span><strong>{money(report.revenue)}</strong></div>
+          <div><span>Cost of goods sold</span><strong>{money(report.cost)}</strong></div>
+          <div><span>Gross profit</span><strong className={report.profit >= 0 ? 'green-text' : 'negative'}>{money(report.profit)}</strong></div>
+          <div><span>VAT payable</span><strong>{money(report.vat)}</strong></div>
+          <div><span>Petty cash withdrawn</span><strong className="negative">−{money(report.pettyTotal)}</strong></div>
+          <div><span>Customer receivables</span><strong>{money(totals.owed)}</strong></div>
+          <div><span>Supplier payables</span><strong>{money(totals.owe)}</strong></div>
+          <div><span>Inventory at cost</span><strong>{money(products.reduce((sum: number, product: Product) => sum + product.stock * product.buy, 0))}</strong></div>
         </div>
       </div>
 
@@ -965,9 +1155,9 @@ function Reports({ sales, products, totals }: any) {
                 <td>
                   <strong>{product.name}</strong>
                 </td>
-                <td>{money(product.sell * 12)}</td>
-                <td>{money(product.buy * 12)}</td>
-                <td className="green-text">+{money((product.sell - product.buy) * 12)}</td>
+                <td>{money(report.entries.flatMap((entry: Sale) => entry.items).filter((item: Sale['items'][number]) => item.name === product.name).reduce((sum: number, item: Sale['items'][number]) => sum + item.price * item.qty, 0))}</td>
+                <td>{money(report.entries.flatMap((entry: Sale) => entry.items).filter((item: Sale['items'][number]) => item.name === product.name).reduce((sum: number, item: Sale['items'][number]) => sum + item.buy * item.qty, 0))}</td>
+                <td className="green-text">+{money(report.entries.flatMap((entry: Sale) => entry.items).filter((item: Sale['items'][number]) => item.name === product.name).reduce((sum: number, item: Sale['items'][number]) => sum + (item.price - item.buy) * item.qty, 0))}</td>
                 <td>
                   <span className="margin-bar">
                     <i style={{ width: `${Math.max(0, Math.min(100, ((product.sell - product.buy) / Math.max(product.sell, 1)) * 100))}%` }} />
@@ -994,7 +1184,7 @@ function SaleModal({ products, cart, setCart, addToCart, includeVat, setIncludeV
             return item
           }
 
-          const nextQty = normalizeQuantity(item.qty + delta, unit)
+          const nextQty = Math.min(item.product.stock, normalizeQuantity(item.qty + delta, unit))
           return { ...item, qty: nextQty }
         })
         .filter((item) => item.qty > 0),
@@ -1013,10 +1203,10 @@ function SaleModal({ products, cart, setCart, addToCart, includeVat, setIncludeV
                 <span>
                   {product.name}
                   <small>
-                    {money(product.sell)} / {product.unit}
+                    {money(product.sell)} / {product.unit} · {product.stock} {product.unit} in stock
                   </small>
                 </span>
-                <Plus />
+                {product.stock > 0 ? <Plus /> : <span className="out-of-stock">Out of stock</span>}
               </button>
             ))}
           </div>
@@ -1045,10 +1235,11 @@ function SaleModal({ products, cart, setCart, addToCart, includeVat, setIncludeV
                       <input
                         type="number"
                         min="0"
+                        max={item.product.stock}
                         step={step}
                         value={item.qty}
                         onChange={(event) => {
-                          const nextQty = Number(event.target.value)
+                              const nextQty = Math.min(item.product.stock, Number(event.target.value))
                           if (!Number.isNaN(nextQty)) {
                             setCart((current: CartItem[]) =>
                               current
@@ -1103,14 +1294,14 @@ function SaleModal({ products, cart, setCart, addToCart, includeVat, setIncludeV
   )
 }
 
-function ProductModal({ close, onSave }: { close: () => void; onSave: (payload: { name: string; category: string; stock: number; unit: string; buy: number; sell: number; min: number }) => Promise<void> }) {
-  const [name, setName] = useState('')
-  const [category, setCategory] = useState('Groceries')
-  const [stock, setStock] = useState('')
-  const [unit, setUnit] = useState('pieces')
-  const [buy, setBuy] = useState('')
-  const [sell, setSell] = useState('')
-  const [min, setMin] = useState('5')
+function ProductModal({ product, close, onSave }: { product?: Product | null; close: () => void; onSave: (payload: { name: string; category: string; stock: number; unit: string; buy: number; sell: number; min: number }) => Promise<void> }) {
+  const [name, setName] = useState(product?.name ?? '')
+  const [category, setCategory] = useState(product?.category ?? 'Groceries')
+  const [stock, setStock] = useState(product ? String(product.stock) : '')
+  const [unit, setUnit] = useState(product?.unit ?? 'pieces')
+  const [buy, setBuy] = useState(product ? String(product.buy) : '')
+  const [sell, setSell] = useState(product ? String(product.sell) : '')
+  const [min, setMin] = useState(product ? String(product.min) : '5')
 
   const save = async () => {
     const payload = {
@@ -1130,7 +1321,7 @@ function ProductModal({ close, onSave }: { close: () => void; onSave: (payload: 
   }
 
   return (
-    <Modal title="Add product" close={close}>
+    <Modal title={product ? 'Edit product' : 'Add product'} close={close}>
       <div className="form-grid">
         <label>
           Product name
@@ -1171,8 +1362,40 @@ function ProductModal({ close, onSave }: { close: () => void; onSave: (payload: 
         </label>
       </div>
       <button className="primary-btn full" onClick={() => void save()}>
-        Save product <Check />
+        {product ? 'Update product' : 'Save product'} <Check />
       </button>
+    </Modal>
+  )
+}
+
+function PasswordModal({ close, onSave }: { close: () => void; onSave: (currentPassword: string, newPassword: string) => Promise<void> }) {
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [error, setError] = useState('')
+
+  const save = async () => {
+    setError('')
+    if (newPassword !== confirmPassword) {
+      setError('New passwords do not match.')
+      return
+    }
+    try {
+      await onSave(currentPassword, newPassword)
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Unable to change password.')
+    }
+  }
+
+  return (
+    <Modal title="Change password" close={close}>
+      <div className="form-grid">
+        <label>Current password<input type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} /></label>
+        <label>New password<input type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} placeholder="At least 6 characters" /></label>
+        <label>Confirm new password<input type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} /></label>
+      </div>
+      {error ? <div className="error-text">{error}</div> : null}
+      <button className="primary-btn full" onClick={() => void save()}>Update password <KeyRound /></button>
     </Modal>
   )
 }
@@ -1228,6 +1451,30 @@ function DebtModal({ close, onSave }: { close: () => void; onSave: (payload: { n
       <button className="primary-btn full" onClick={() => void save()}>
         Save account <Check />
       </button>
+    </Modal>
+  )
+}
+
+function PettyCashModal({ close, onSave }: { close: () => void; onSave: (payload: { amount: number; reason: string; date: string }) => Promise<void> }) {
+  const [amount, setAmount] = useState('')
+  const [reason, setReason] = useState('')
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
+
+  const save = async () => {
+    if (!amount || !reason.trim()) {
+      return
+    }
+    await onSave({ amount: Number(amount), reason: reason.trim(), date })
+  }
+
+  return (
+    <Modal title="Record petty cash withdrawal" close={close}>
+      <div className="form-grid">
+        <label>Amount withdrawn<input type="number" min="0" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="RWF" /></label>
+        <label>Date<input type="date" value={date} onChange={(event) => setDate(event.target.value)} /></label>
+        <label>Reason<input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="e.g. Bought packaging materials" /></label>
+      </div>
+      <button className="primary-btn full" onClick={() => void save()}>Save withdrawal <Wallet /></button>
     </Modal>
   )
 }

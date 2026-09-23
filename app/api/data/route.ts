@@ -8,10 +8,12 @@ export async function GET() {
     const productsCol = await getCollection<any>('products')
     const salesCol = await getCollection<any>('sales')
     const debtsCol = await getCollection<any>('debts')
+    const pettyCashCol = await getCollection<any>('petty_cash')
 
     const products = await productsCol.find({}).sort({ _id: -1 }).toArray()
     const sales = await salesCol.find({}).sort({ _id: -1 }).toArray()
     const debts = await debtsCol.find({}).sort({ _id: -1 }).toArray()
+    const pettyCash = await pettyCashCol.find({}).sort({ _id: -1 }).toArray()
 
     return NextResponse.json({
       ok: true,
@@ -41,6 +43,12 @@ export async function GET() {
         original: Number(debt.original ?? debt.original_amount ?? debt.amount ?? 0),
         kind: debt.kind,
         due: debt.due ? new Date(debt.due).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'No date',
+      })),
+      pettyCash: pettyCash.map((entry) => ({
+        id: entry.id ?? entry._id?.toString?.(),
+        date: entry.date,
+        amount: Number(entry.amount ?? 0),
+        reason: entry.reason,
       })),
     })
   } catch (error) {
