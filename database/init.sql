@@ -1,0 +1,47 @@
+CREATE DATABASE IF NOT EXISTS nadine_shop;
+USE nadine_shop;
+
+CREATE TABLE IF NOT EXISTS users (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  username VARCHAR(80) UNIQUE NOT NULL,
+  password VARCHAR(255) NOT NULL,
+  role ENUM('admin', 'cashier') NOT NULL DEFAULT 'admin',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS products (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(120) NOT NULL,
+  category VARCHAR(80) NOT NULL,
+  stock INT NOT NULL DEFAULT 0,
+  unit VARCHAR(40) NOT NULL DEFAULT 'pieces',
+  buy_price DECIMAL(12,2) NOT NULL DEFAULT 0,
+  sell_price DECIMAL(12,2) NOT NULL DEFAULT 0,
+  min_stock INT NOT NULL DEFAULT 5,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS sales (
+  id VARCHAR(50) PRIMARY KEY,
+  sale_date DATE NOT NULL,
+  items JSON NOT NULL,
+  total DECIMAL(12,2) NOT NULL DEFAULT 0,
+  profit DECIMAL(12,2) NOT NULL DEFAULT 0,
+  vat TINYINT(1) NOT NULL DEFAULT 0,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS debts (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(120) NOT NULL,
+  phone VARCHAR(40) DEFAULT NULL,
+  amount DECIMAL(12,2) NOT NULL DEFAULT 0,
+  original_amount DECIMAL(12,2) NOT NULL DEFAULT 0,
+  kind ENUM('customer', 'supplier') NOT NULL,
+  due_date DATE DEFAULT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+INSERT IGNORE INTO users (username, password, role) VALUES
+  ('admin', 'nadine123', 'admin'),
+  ('cashier', 'cashier123', 'cashier');
