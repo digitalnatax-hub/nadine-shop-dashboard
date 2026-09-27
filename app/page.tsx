@@ -1302,8 +1302,12 @@ function SaleModal({ products, cart, setCart, addToCart, includeVat, setIncludeV
   const [paymentType, setPaymentType] = useState<'cash' | 'credit'>('cash')
   const [customerName, setCustomerName] = useState('')
   const [customerPhone, setCustomerPhone] = useState('')
+  const [productSearch, setProductSearch] = useState('')
   const [error, setError] = useState('')
   const subtotal = cart.reduce((sum: number, item: CartItem) => sum + item.product.sell * item.qty, 0)
+  const visibleProducts = products.filter((product: Product) =>
+    product.name.toLowerCase().includes(productSearch.trim().toLowerCase()),
+  )
 
   const changeQuantity = (productId: number, unit: string, delta: number) => {
     setCart((current: CartItem[]) =>
@@ -1334,8 +1338,20 @@ function SaleModal({ products, cart, setCart, addToCart, includeVat, setIncludeV
             <label>Phone (optional)<input value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value)} placeholder="Phone number" /></label>
           </div>}
           <label>Choose products</label>
-          <div className="product-picker">
-            {products.map((product: Product) => (
+          {products.length > 3 && (
+            <div className="sale-product-search">
+              <Search />
+              <input
+                type="search"
+                placeholder="Search products..."
+                aria-label="Search sale products"
+                value={productSearch}
+                onChange={(event) => setProductSearch(event.target.value)}
+              />
+            </div>
+          )}
+          <div className={products.length > 3 ? 'product-picker product-picker-scroll' : 'product-picker'}>
+            {visibleProducts.map((product: Product) => (
               <button key={product.id} disabled={product.stock <= 0} onClick={() => addToCart(product)}>
                 <Package />
                 <span>
@@ -1347,6 +1363,7 @@ function SaleModal({ products, cart, setCart, addToCart, includeVat, setIncludeV
                 {product.stock > 0 ? <Plus /> : <span className="out-of-stock">Out of stock</span>}
               </button>
             ))}
+            {!visibleProducts.length && <div className="empty-state">No matching products.</div>}
           </div>
         </div>
 
