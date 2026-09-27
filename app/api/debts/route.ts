@@ -13,6 +13,10 @@ export async function GET() {
       original: Number(debt.original ?? debt.amount ?? 0),
       kind: debt.kind,
       due: debt.due ? new Date(debt.due).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
+      status: debt.status ?? 'unpaid',
+      description: debt.description ?? '',
+      items: debt.items ?? [],
+      vat: Boolean(debt.vat),
     })) })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unable to fetch debts.'
@@ -25,17 +29,52 @@ export async function POST(request: Request) {
     await ensureDatabaseSchema()
     const body = await request.json()
     const name = String(body.name ?? '').trim()
-    const amount = Number(body.amount ?? 0)
+    const isSaleOnCredit = Array.isArray(body.items)
     const kind = body.kind === 'supplier' ? 'supplier' : 'customer'
     const due = body.due ? String(body.due) : new Date().toISOString().slice(0, 10)
 
-    if (!name || amount <= 0) {
+    if (!name || (kind === 'supplier' && Number(body.amount ?? 0) <= 0) || (isSaleOnCredit && kind !== 'customer')) {
       return NextResponse.json({ ok: false, error: 'Name and amount are required.' }, { status: 400 })
+    }
+    if (isSaleOnCredit && body.items.length === 0) {
+      return NextResponse.json({ ok: false, error: 'At least one product is required for a credit sale.' }, { status: 400 })
     }
 
     const debts = await getCollection<any>('debts')
     const last = await debts.find({}).sort({ id: -1 }).limit(1).next()
     const id = Number(last?.id ?? 0) + 1
+
+    if (isSaleOnCredit) {
+      const products = await getCollection<any>('products')
+      const items = []
+      const reserved: { id: number; qty: number }[] = []
+      try {
+        for (const requested of body.items) {
+          const productId = Number(requested.productId)
+          const qty = Number(requested.qty)
+          if (!Number.isFinite(productId) || !Number.isFinite(qty) || qty <= 0) throw new Error('Each item needs a valid product and quantity.')
+          const product = await products.findOne({ id: productId })
+          if (!product) throw new Error('A selected product no longer exists.')
+          const updated = await products.updateOne({ id: productId, stock: { $gte: qty } }, { $inc: { stock: -qty } })
+          if (!updated.modifiedCount) throw new Error(`${product.name} does not have enough stock.`)
+          reserved.push({ id: productId, qty })
+          items.push({ productId, name: product.name, qty, unit: product.unit, price: Number(product.sell), buy: Number(product.buy ?? product.buy_price ?? 0) })
+        }
+        const subtotal = items.reduce((sum, item) => sum + item.price * item.qty, 0)
+        const vat = Boolean(body.vat)
+        const amount = subtotal * (vat ? 1.18 : 1)
+        const description = String(body.description ?? `Credit sale: ${items.map((item) => item.name).join(', ')}`).trim()
+        const debt = { id, name, phone: body.phone ?? '', amount, original: amount, kind: 'customer', due, status: 'unpaid', description, items, vat, createdAt: new Date() }
+        await debts.insertOne(debt)
+        return NextResponse.json({ ok: true, debt })
+      } catch (error) {
+        for (const item of reserved.reverse()) await products.updateOne({ id: item.id }, { $inc: { stock: item.qty } })
+        throw error
+      }
+    }
+
+    const amount = Number(body.amount ?? 0)
+    if (!Number.isFinite(amount) || amount <= 0) return NextResponse.json({ ok: false, error: 'Name and a positive amount are required.' }, { status: 400 })
 
     const debt = {
       id,
@@ -45,6 +84,8 @@ export async function POST(request: Request) {
       original: amount,
       kind,
       due,
+      status: 'unpaid',
+      description: String(body.description ?? ''),
       createdAt: new Date(),
     }
 
@@ -53,6 +94,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, debt: { ...debt } })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unable to create debt record.'
-    return NextResponse.json({ ok: false, error: message }, { status: 503 })
+    return NextResponse.json({ ok: false, error: message }, { status: message.toLowerCase().includes('stock') ? 409 : 503 })
   }
 }

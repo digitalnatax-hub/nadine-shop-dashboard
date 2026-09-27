@@ -43,10 +43,11 @@ type Product = {
 type Sale = {
   id: string
   date: string
-  items: { name: string; qty: number; unit: string; price: number; buy: number }[]
+  items: { productId?: number; name: string; qty: number; unit: string; price: number; buy: number }[]
   total: number
   profit: number
   vat: boolean
+  creditDebtId?: number
 }
 
 type Debt = {
@@ -57,6 +58,10 @@ type Debt = {
   original: number
   kind: 'customer' | 'supplier'
   due: string
+  status?: 'unpaid' | 'settling' | 'paid'
+  description?: string
+  items?: Sale['items']
+  vat?: boolean
 }
 
 type PettyCash = {
@@ -108,6 +113,7 @@ export default function Page() {
   const [showPettyCash, setShowPettyCash] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [receipt, setReceipt] = useState<Sale | null>(null)
+  const [editingSale, setEditingSale] = useState<Sale | null>(null)
   const [search, setSearch] = useState('')
   const [includeVat, setIncludeVat] = useState(true)
   const [cart, setCart] = useState<CartItem[]>([])
@@ -217,6 +223,7 @@ export default function Page() {
       id: `NS-${Date.now().toString().slice(-6)}`,
       date: new Date().toISOString().slice(0, 10),
       items: cart.map((item) => ({
+        productId: item.product.id,
         name: item.product.name,
         qty: item.qty,
         unit: item.product.unit,
@@ -240,14 +247,6 @@ export default function Page() {
       return
     }
 
-    for (const item of cart) {
-      await fetch(`/api/products/${item.product.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ stockDelta: -item.qty }),
-      })
-    }
-
     setSales((current) => [payload.sale, ...current])
     setProducts((current) =>
       current.map((product) => {
@@ -261,6 +260,76 @@ export default function Page() {
     setCart([])
     setShowSale(false)
     setReceipt(payload.sale)
+  }
+
+  const completeCreditSale = async (customer: { name: string; phone?: string }) => {
+    if (!cart.length) return
+    const response = await fetch('/api/debts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: customer.name,
+        phone: customer.phone,
+        kind: 'customer',
+        due: new Date().toISOString().slice(0, 10),
+        vat: includeVat,
+        items: cart.map((item) => ({ productId: item.product.id, qty: item.qty })),
+      }),
+    })
+    const payload = await response.json()
+    if (!response.ok || !payload.ok) throw new Error(payload.error ?? 'Credit sale could not be saved.')
+    setDebts((current) => [payload.debt, ...current])
+    setProducts((current) => current.map((product) => {
+      const cartItem = cart.find((entry) => entry.product.id === product.id)
+      return cartItem ? { ...product, stock: product.stock - cartItem.qty } : product
+    }))
+    setCart([])
+    setShowSale(false)
+  }
+
+  const deleteSale = async (sale: Sale) => {
+    const prompt = sale.creditDebtId
+      ? `Reverse the payment for ${sale.id}? This will reopen the customer's debt.`
+      : `Delete sale ${sale.id}? Its items will be returned to stock.`
+    if (!window.confirm(prompt)) return
+    const response = await fetch(`/api/sales/${encodeURIComponent(sale.id)}`, { method: 'DELETE' })
+    const payload = await response.json()
+    if (!response.ok || !payload.ok) {
+      setLoginError(payload.error ?? 'Unable to delete sale.')
+      return
+    }
+    if (payload.reversedSettlement) {
+      await loadData()
+      return
+    }
+    setSales((current) => current.filter((entry) => entry.id !== sale.id))
+    setProducts((current) => current.map((product) => ({
+      ...product,
+      stock: product.stock + sale.items.filter((item) => item.productId === product.id || (!item.productId && item.name === product.name)).reduce((sum, item) => sum + item.qty, 0),
+    })))
+  }
+
+  const updateSale = async (sale: Sale, items: Sale['items'], date: string, vat: boolean) => {
+    const response = await fetch(`/api/sales/${encodeURIComponent(sale.id)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ date, vat, items }),
+    })
+    const payload = await response.json()
+    if (!response.ok || !payload.ok) throw new Error(payload.error ?? 'Unable to update sale.')
+    await loadData()
+    setEditingSale(null)
+  }
+
+  const settleDebt = async (debt: Debt) => {
+    if (!window.confirm(`Mark ${debt.name}'s debt of ${money(debt.amount)} as paid and record it as a sale?`)) return
+    const response = await fetch(`/api/debts/${debt.id}`, { method: 'PATCH' })
+    const payload = await response.json()
+    if (!response.ok || !payload.ok) {
+      setLoginError(payload.error ?? 'Unable to settle debt.')
+      return
+    }
+    await loadData()
   }
 
   const createProduct = async (input: { name: string; category: string; stock: number; unit: string; buy: number; sell: number; min: number }) => {
@@ -319,7 +388,7 @@ export default function Page() {
     setShowPassword(false)
   }
 
-  const createDebt = async (input: { name: string; phone?: string; amount: number; kind: 'customer' | 'supplier'; due: string }) => {
+  const createDebt = async (input: { name: string; phone?: string; amount: number; kind: 'customer' | 'supplier'; due: string; description?: string }) => {
     const response = await fetch('/api/debts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -329,6 +398,7 @@ export default function Page() {
         amount: input.amount,
         kind: input.kind,
         due: input.due,
+        description: input.description,
       }),
     })
 
@@ -528,12 +598,12 @@ export default function Page() {
             <Dashboard totals={totals} lowStock={lowStock} sales={sales} products={products} setShowSale={setShowSale} />
           )}
           {page === 'Sales' && (
-            <SalesPage sales={sales} setShowSale={setShowSale} setReceipt={setReceipt} search={search} setSearch={setSearch} />
+            <SalesPage sales={sales} products={products} setShowSale={setShowSale} setReceipt={setReceipt} setEditingSale={setEditingSale} deleteSale={deleteSale} search={search} setSearch={setSearch} />
           )}
           {page === 'Inventory' && (
             <Inventory products={products} setShowProduct={setShowProduct} setEditingProduct={setEditingProduct} deleteProduct={deleteProduct} search={search} setSearch={setSearch} />
           )}
-          {page === 'Finances' && <FinancePage debts={debts} pettyCash={pettyCash} setShowDebt={setShowDebt} setShowPettyCash={() => setShowPettyCash(true)} />}
+          {page === 'Finances' && <FinancePage debts={debts} pettyCash={pettyCash} setShowDebt={setShowDebt} setShowPettyCash={() => setShowPettyCash(true)} settleDebt={settleDebt} />}
           {page === 'Reports' && <Reports products={products} sales={sales} pettyCash={pettyCash} totals={totals} />}
         </main>
       </div>
@@ -583,6 +653,7 @@ export default function Page() {
           completeSale={() => {
             void completeSale()
           }}
+          completeCreditSale={completeCreditSale}
           close={() => setShowSale(false)}
         />
       )}
@@ -615,6 +686,7 @@ export default function Page() {
       )}
 
       {receipt && <ReceiptModal sale={receipt} close={() => setReceipt(null)} />}
+      {editingSale && <SaleEditModal sale={editingSale} products={products} close={() => setEditingSale(null)} onSave={(items, date, vat) => updateSale(editingSale, items, date, vat)} />}
     </div>
   )
 }
@@ -710,6 +782,7 @@ function Dashboard({ totals, lowStock, sales, products, setShowSale }: any) {
     { label: "Today's sales (excl. VAT)", value: money(totals.todaySales || 0), color: 'teal', icon: ShoppingCart, change: `${sales.length} sales` },
     { label: "Today's profit", value: money(totals.todayProfit || 0), color: 'green', icon: TrendingUp, change: 'After petty cash' },
     { label: 'VAT payable', value: money(totals.todayVat || 0), color: 'amber', icon: CircleDollarSign, change: 'From included VAT' },
+    { label: 'Customers owe', value: money(totals.owed), color: 'amber', icon: Users, change: 'Open customer debts' },
     { label: 'Low stock items', value: lowStock.length, color: 'red', icon: AlertTriangle, change: 'Needs attention' },
   ]
 
@@ -843,7 +916,7 @@ function Dashboard({ totals, lowStock, sales, products, setShowSale }: any) {
   )
 }
 
-function SalesPage({ sales, setShowSale, setReceipt, search, setSearch }: any) {
+function SalesPage({ sales, products, setShowSale, setReceipt, setEditingSale, deleteSale, search, setSearch }: any) {
   const visibleSales = sales.filter((entry: Sale) => entry.id.toLowerCase().includes(search.toLowerCase()))
 
   return (
@@ -885,16 +958,19 @@ function SalesPage({ sales, setShowSale, setReceipt, search, setSearch }: any) {
                   <strong>{money(entry.total)}</strong>
                 </td>
                 <td className="green-text">+{money(entry.profit)}</td>
-                <td>
-                  <span className="badge success">
-                    <Check />
-                    Paid
-                  </span>
-                </td>
+                <td><span className="badge success"><Check />{entry.creditDebtId ? 'Credit paid' : 'Cash'}</span></td>
                 <td>
                   <button className="icon-btn" onClick={() => setReceipt(entry)}>
                     <FileText />
                   </button>
+                  {!entry.creditDebtId && <button className="icon-btn" title="Edit sale" onClick={() => setEditingSale({
+                    ...entry,
+                    items: entry.items.map((item) => ({
+                      ...item,
+                      productId: item.productId ?? products.find((product: Product) => product.name === item.name)?.id,
+                    })),
+                  })}><Pencil /></button>}
+                  <button className="icon-btn danger-icon" title={entry.creditDebtId ? 'Reverse debt payment' : 'Delete sale'} onClick={() => void deleteSale(entry)}><Trash2 /></button>
                 </td>
               </tr>
             ))}
@@ -969,7 +1045,7 @@ function Inventory({ products, setShowProduct, setEditingProduct, deleteProduct,
   )
 }
 
-function FinancePage({ debts, pettyCash, setShowDebt, setShowPettyCash }: any) {
+function FinancePage({ debts, pettyCash, setShowDebt, setShowPettyCash, settleDebt }: any) {
   const customers = debts.filter((item: Debt) => item.kind === 'customer')
   const suppliers = debts.filter((item: Debt) => item.kind === 'supplier')
 
@@ -999,7 +1075,7 @@ function FinancePage({ debts, pettyCash, setShowDebt, setShowPettyCash }: any) {
             <span className="count-badge teal-bg">{customers.length}</span>
           </div>
           {customers.map((entry: Debt) => (
-            <DebtRow key={entry.id} entry={entry} />
+            <DebtRow key={entry.id} entry={entry} onSettle={settleDebt} />
           ))}
         </div>
 
@@ -1012,7 +1088,7 @@ function FinancePage({ debts, pettyCash, setShowDebt, setShowPettyCash }: any) {
             <span className="count-badge amber-bg">{suppliers.length}</span>
           </div>
           {suppliers.map((entry: Debt) => (
-            <DebtRow key={entry.id} entry={entry} />
+            <DebtRow key={entry.id} entry={entry} onSettle={settleDebt} />
           ))}
         </div>
       </div>
@@ -1038,19 +1114,21 @@ function FinancePage({ debts, pettyCash, setShowDebt, setShowPettyCash }: any) {
   )
 }
 
-function DebtRow({ entry }: any) {
+function DebtRow({ entry, onSettle }: { entry: Debt; onSettle: (entry: Debt) => void }) {
   return (
     <div className="debt-row">
       <div className="debt-avatar">{entry.name[0]}</div>
       <div className="debt-info">
         <strong>{entry.name}</strong>
-        <span>{entry.phone || 'Supplier account'} · Due {entry.due}</span>
+        <span>{entry.description || entry.phone || 'Supplier account'} · Due {entry.due}</span>
+        {entry.status === 'paid' ? <small className="green-text">Paid</small> : null}
         <div className="debt-progress">
           <i style={{ width: `${Math.max(8, (1 - entry.amount / Math.max(entry.original, 1)) * 100)}%` }} />
         </div>
       </div>
       <div className="debt-amount">
         <strong>{money(entry.amount)}</strong>
+        {entry.kind === 'customer' && entry.status !== 'paid' ? <button className="outline-btn settle-debt" disabled={entry.status === 'settling'} onClick={() => onSettle(entry)}>{entry.status === 'settling' ? 'Processing' : 'Mark paid'}</button> : null}
       </div>
     </div>
   )
@@ -1070,9 +1148,10 @@ function Reports({ sales, products, pettyCash, totals }: any) {
     const revenue = entries.reduce((sum: number, entry: Sale) => sum + (entry.vat ? Number(entry.total || 0) / 1.18 : Number(entry.total || 0)), 0)
     const vat = entries.reduce((sum: number, entry: Sale) => sum + (entry.vat ? Number(entry.total || 0) - Number(entry.total || 0) / 1.18 : 0), 0)
     const salesProfit = entries.reduce((sum: number, entry: Sale) => sum + Number(entry.profit || 0), 0)
+    const cost = entries.flatMap((entry: Sale) => entry.items).reduce((sum: number, item: Sale['items'][number]) => sum + Number(item.buy || 0) * Number(item.qty || 0), 0)
     const pettyTotal = pettyCash.filter((entry: PettyCash) => entry.date >= startDate && entry.date <= selectedDate).reduce((sum: number, entry: PettyCash) => sum + Number(entry.amount || 0), 0)
     const profit = salesProfit - pettyTotal
-    return { entries, revenue, vat, pettyTotal, profit, cost: Math.max(0, revenue - salesProfit), loss: Math.max(0, -profit), startDate }
+    return { entries, revenue, vat, pettyTotal, profit, cost, loss: Math.max(0, -profit), startDate }
   }, [range, selectedDate, sales, pettyCash])
 
   return (
@@ -1173,7 +1252,57 @@ function Reports({ sales, products, pettyCash, totals }: any) {
   )
 }
 
-function SaleModal({ products, cart, setCart, addToCart, includeVat, setIncludeVat, completeSale, close }: any) {
+function SaleEditModal({ sale, close, onSave }: { sale: Sale; products: Product[]; close: () => void; onSave: (items: Sale['items'], date: string, vat: boolean) => Promise<void> }) {
+  const [items, setItems] = useState(sale.items)
+  const [date, setDate] = useState(sale.date)
+  const [vat, setVat] = useState(sale.vat)
+  const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const save = async () => {
+    setSaving(true)
+    setError('')
+    try {
+      await onSave(items, date, vat)
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Unable to update sale.')
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Modal title={`Edit sale ${sale.id}`} close={close}>
+      <div className="form-grid sale-edit-fields">
+        <label>Sale date<input type="date" value={date} onChange={(event) => setDate(event.target.value)} /></label>
+        <label className="inline-checkbox"><input type="checkbox" checked={vat} onChange={(event) => setVat(event.target.checked)} /> VAT included</label>
+      </div>
+      <div className="sale-edit-items">
+        {items.map((item, index) => <div className="cart-row" key={`${item.productId}-${item.name}`}>
+          <span>{item.name}<small>{money(item.price)} / {item.unit}</small></span>
+          <div className="cart-actions sale-edit-price">
+            <label>Price<input aria-label={`${item.name} selling price`} type="number" min="0" value={item.price} onChange={(event) => {
+              const price = Math.max(0, Number(event.target.value))
+              setItems((current) => current.map((currentItem, currentIndex) => currentIndex === index ? { ...currentItem, price } : currentItem))
+            }} /></label>
+            <input aria-label={`${item.name} quantity`} type="number" min="0" step={getQuantityStep(item.unit)} value={item.qty} onChange={(event) => {
+              const qty = normalizeQuantity(Number(event.target.value), item.unit)
+              setItems((current) => current.map((currentItem, currentIndex) => currentIndex === index ? { ...currentItem, qty } : currentItem))
+            }} />
+            <button className="icon-btn danger-icon" aria-label={`Remove ${item.name}`} onClick={() => setItems((current) => current.filter((_, currentIndex) => currentIndex !== index))}><X /></button>
+          </div>
+        </div>)}
+      </div>
+      {error ? <div className="error-text">{error}</div> : null}
+      <button className="primary-btn full" disabled={saving || !items.some((item) => item.qty > 0)} onClick={() => void save()}>{saving ? 'Saving…' : 'Save sale changes'} <Check /></button>
+    </Modal>
+  )
+}
+
+function SaleModal({ products, cart, setCart, addToCart, includeVat, setIncludeVat, completeSale, completeCreditSale, close }: any) {
+  const [paymentType, setPaymentType] = useState<'cash' | 'credit'>('cash')
+  const [customerName, setCustomerName] = useState('')
+  const [customerPhone, setCustomerPhone] = useState('')
+  const [error, setError] = useState('')
   const subtotal = cart.reduce((sum: number, item: CartItem) => sum + item.product.sell * item.qty, 0)
 
   const changeQuantity = (productId: number, unit: string, delta: number) => {
@@ -1195,10 +1324,19 @@ function SaleModal({ products, cart, setCart, addToCart, includeVat, setIncludeV
     <Modal title="New sale" close={close}>
       <div className="sale-layout">
         <div>
+          <fieldset className="payment-choice">
+            <legend>Payment type</legend>
+            <label><input type="radio" checked={paymentType === 'cash'} onChange={() => setPaymentType('cash')} /> Cash sale</label>
+            <label><input type="radio" checked={paymentType === 'credit'} onChange={() => setPaymentType('credit')} /> Sale on debt</label>
+          </fieldset>
+          {paymentType === 'credit' && <div className="credit-customer-fields">
+            <label>Customer name<input value={customerName} onChange={(event) => setCustomerName(event.target.value)} placeholder="Name of customer" /></label>
+            <label>Phone (optional)<input value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value)} placeholder="Phone number" /></label>
+          </div>}
           <label>Choose products</label>
           <div className="product-picker">
             {products.map((product: Product) => (
-              <button key={product.id} onClick={() => addToCart(product)}>
+              <button key={product.id} disabled={product.stock <= 0} onClick={() => addToCart(product)}>
                 <Package />
                 <span>
                   {product.name}
@@ -1285,9 +1423,19 @@ function SaleModal({ products, cart, setCart, addToCart, includeVat, setIncludeV
             </span>
           </div>
 
-          <button className="primary-btn full" onClick={completeSale} disabled={!cart.length}>
-            Complete sale <ChevronRight />
-          </button>
+          {paymentType === 'cash' ? (
+            <button className="primary-btn full" onClick={completeSale} disabled={!cart.length}>Complete cash sale <ChevronRight /></button>
+          ) : (
+            <button className="primary-btn full" disabled={!cart.length || !customerName.trim()} onClick={async () => {
+              setError('')
+              try {
+                await completeCreditSale({ name: customerName.trim(), phone: customerPhone.trim() || undefined })
+              } catch (saveError) {
+                setError(saveError instanceof Error ? saveError.message : 'Unable to record credit sale.')
+              }
+            }}>Record sale on debt <ChevronRight /></button>
+          )}
+          {error ? <div className="error-text">{error}</div> : null}
         </div>
       </div>
     </Modal>
@@ -1400,11 +1548,12 @@ function PasswordModal({ close, onSave }: { close: () => void; onSave: (currentP
   )
 }
 
-function DebtModal({ close, onSave }: { close: () => void; onSave: (payload: { name: string; phone?: string; amount: number; kind: 'customer' | 'supplier'; due: string }) => Promise<void> }) {
+function DebtModal({ close, onSave }: { close: () => void; onSave: (payload: { name: string; phone?: string; amount: number; kind: 'customer' | 'supplier'; due: string; description?: string }) => Promise<void> }) {
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
   const [amount, setAmount] = useState('')
   const [kind, setKind] = useState<'customer' | 'supplier'>('customer')
+  const [description, setDescription] = useState('')
   const [due, setDue] = useState(new Date().toISOString().slice(0, 10))
 
   const save = async () => {
@@ -1417,6 +1566,7 @@ function DebtModal({ close, onSave }: { close: () => void; onSave: (payload: { n
       amount: Number(amount),
       kind,
       due,
+      description: description.trim() || undefined,
     })
     close()
   }
@@ -1442,6 +1592,10 @@ function DebtModal({ close, onSave }: { close: () => void; onSave: (payload: { n
         <label>
           Amount owed
           <input type="number" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="RWF" />
+        </label>
+        <label>
+          What is this debt for?
+          <input value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Reason or items" />
         </label>
         <label>
           Due date

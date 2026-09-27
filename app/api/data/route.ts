@@ -34,6 +34,7 @@ export async function GET() {
         total: Number(sale.total ?? 0),
         profit: Number(sale.profit ?? 0),
         vat: Boolean(sale.vat),
+        creditDebtId: sale.creditDebtId,
       })),
       debts: debts.map((debt) => ({
         id: Number(debt.id),
@@ -42,6 +43,10 @@ export async function GET() {
         amount: Number(debt.amount ?? 0),
         original: Number(debt.original ?? debt.original_amount ?? debt.amount ?? 0),
         kind: debt.kind,
+        status: debt.status ?? 'unpaid',
+        description: debt.description ?? '',
+        items: Array.isArray(debt.items) ? debt.items : [],
+        vat: Boolean(debt.vat),
         due: debt.due ? new Date(debt.due).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'No date',
       })),
       pettyCash: pettyCash.map((entry) => ({
