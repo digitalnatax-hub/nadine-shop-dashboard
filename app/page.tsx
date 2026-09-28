@@ -56,6 +56,7 @@ type Debt = {
   phone?: string
   amount: number
   original: number
+  paidAmount?: number
   kind: 'customer' | 'supplier'
   due: string
   status?: 'unpaid' | 'settling' | 'paid'
@@ -114,6 +115,7 @@ export default function Page() {
   const [showPassword, setShowPassword] = useState(false)
   const [receipt, setReceipt] = useState<Sale | null>(null)
   const [editingSale, setEditingSale] = useState<Sale | null>(null)
+  const [payingDebt, setPayingDebt] = useState<Debt | null>(null)
   const [search, setSearch] = useState('')
   const [includeVat, setIncludeVat] = useState(true)
   const [cart, setCart] = useState<CartItem[]>([])
@@ -321,15 +323,18 @@ export default function Page() {
     setEditingSale(null)
   }
 
-  const settleDebt = async (debt: Debt) => {
-    if (!window.confirm(`Mark ${debt.name}'s debt of ${money(debt.amount)} as paid and record it as a sale?`)) return
-    const response = await fetch(`/api/debts/${debt.id}`, { method: 'PATCH' })
+  const settleDebt = async (debt: Debt, amount: number) => {
+    const response = await fetch(`/api/debts/${debt.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ amount }),
+    })
     const payload = await response.json()
     if (!response.ok || !payload.ok) {
-      setLoginError(payload.error ?? 'Unable to settle debt.')
-      return
+      throw new Error(payload.error ?? 'Unable to record payment.')
     }
     await loadData()
+    setPayingDebt(null)
   }
 
   const createProduct = async (input: { name: string; category: string; stock: number; unit: string; buy: number; sell: number; min: number }) => {
@@ -603,7 +608,7 @@ export default function Page() {
           {page === 'Inventory' && (
             <Inventory products={products} setShowProduct={setShowProduct} setEditingProduct={setEditingProduct} deleteProduct={deleteProduct} search={search} setSearch={setSearch} />
           )}
-          {page === 'Finances' && <FinancePage debts={debts} pettyCash={pettyCash} setShowDebt={setShowDebt} setShowPettyCash={() => setShowPettyCash(true)} settleDebt={settleDebt} />}
+          {page === 'Finances' && <FinancePage debts={debts} pettyCash={pettyCash} setShowDebt={setShowDebt} setShowPettyCash={() => setShowPettyCash(true)} onPayDebt={setPayingDebt} />}
           {page === 'Reports' && <Reports products={products} sales={sales} pettyCash={pettyCash} totals={totals} />}
         </main>
       </div>
@@ -687,6 +692,7 @@ export default function Page() {
 
       {receipt && <ReceiptModal sale={receipt} close={() => setReceipt(null)} />}
       {editingSale && <SaleEditModal sale={editingSale} products={products} close={() => setEditingSale(null)} onSave={(items, date, vat) => updateSale(editingSale, items, date, vat)} />}
+      {payingDebt && <DebtPaymentModal debt={payingDebt} close={() => setPayingDebt(null)} onPay={(amount) => settleDebt(payingDebt, amount)} />}
     </div>
   )
 }
@@ -958,7 +964,7 @@ function SalesPage({ sales, products, setShowSale, setReceipt, setEditingSale, d
                   <strong>{money(entry.total)}</strong>
                 </td>
                 <td className="green-text">+{money(entry.profit)}</td>
-                <td><span className="badge success"><Check />{entry.creditDebtId ? 'Credit paid' : 'Cash'}</span></td>
+                <td><span className="badge success"><Check />{entry.creditDebtId ? 'Credit payment' : 'Cash'}</span></td>
                 <td>
                   <button className="icon-btn" onClick={() => setReceipt(entry)}>
                     <FileText />
@@ -1045,7 +1051,45 @@ function Inventory({ products, setShowProduct, setEditingProduct, deleteProduct,
   )
 }
 
-function FinancePage({ debts, pettyCash, setShowDebt, setShowPettyCash, settleDebt }: any) {
+function DebtPaymentModal({ debt, close, onPay }: { debt: Debt; close: () => void; onPay: (amount: number) => Promise<void> }) {
+  const [amount, setAmount] = useState(String(debt.amount))
+  const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
+  const payment = Number(amount)
+  const remaining = Math.max(0, Number(debt.amount) - (Number.isFinite(payment) ? payment : 0))
+
+  const submit = async () => {
+    setError('')
+    if (!Number.isFinite(payment) || payment <= 0 || payment > debt.amount) {
+      setError(`Enter a whole RWF amount between 1 and ${money(debt.amount)}.`)
+      return
+    }
+    setSaving(true)
+    try {
+      await onPay(payment)
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Unable to record payment.')
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Modal title={`Receive payment from ${debt.name}`} close={close}>
+      <div className="payment-balance">
+        <span>Outstanding debt</span><strong>{money(debt.amount)}</strong>
+        {Number(debt.paidAmount ?? 0) > 0 && <small>Previously paid: {money(debt.paidAmount ?? 0)}</small>}
+      </div>
+      <div className="form-grid">
+        <label>Amount being paid<input type="number" min="1" max={debt.amount} step="1" autoFocus value={amount} onChange={(event) => setAmount(event.target.value)} /></label>
+      </div>
+      <div className="payment-remaining"><span>Balance remaining after payment</span><strong>{money(remaining)}</strong></div>
+      {error ? <div className="error-text">{error}</div> : null}
+      <button className="primary-btn full" disabled={saving || !Number.isFinite(payment) || payment <= 0 || payment > debt.amount} onClick={() => void submit()}>{saving ? 'Recording payment…' : `Record ${money(payment || 0)} payment`} <Check /></button>
+    </Modal>
+  )
+}
+
+function FinancePage({ debts, pettyCash, setShowDebt, setShowPettyCash, onPayDebt }: any) {
   const customers = debts.filter((item: Debt) => item.kind === 'customer')
   const suppliers = debts.filter((item: Debt) => item.kind === 'supplier')
 
@@ -1075,7 +1119,7 @@ function FinancePage({ debts, pettyCash, setShowDebt, setShowPettyCash, settleDe
             <span className="count-badge teal-bg">{customers.length}</span>
           </div>
           {customers.map((entry: Debt) => (
-            <DebtRow key={entry.id} entry={entry} onSettle={settleDebt} />
+            <DebtRow key={entry.id} entry={entry} onPayDebt={onPayDebt} />
           ))}
         </div>
 
@@ -1088,7 +1132,7 @@ function FinancePage({ debts, pettyCash, setShowDebt, setShowPettyCash, settleDe
             <span className="count-badge amber-bg">{suppliers.length}</span>
           </div>
           {suppliers.map((entry: Debt) => (
-            <DebtRow key={entry.id} entry={entry} onSettle={settleDebt} />
+            <DebtRow key={entry.id} entry={entry} onPayDebt={onPayDebt} />
           ))}
         </div>
       </div>
@@ -1114,13 +1158,14 @@ function FinancePage({ debts, pettyCash, setShowDebt, setShowPettyCash, settleDe
   )
 }
 
-function DebtRow({ entry, onSettle }: { entry: Debt; onSettle: (entry: Debt) => void }) {
+function DebtRow({ entry, onPayDebt }: { entry: Debt; onPayDebt: (entry: Debt) => void }) {
   return (
     <div className="debt-row">
       <div className="debt-avatar">{entry.name[0]}</div>
       <div className="debt-info">
         <strong>{entry.name}</strong>
         <span>{entry.description || entry.phone || 'Supplier account'} · Due {entry.due}</span>
+        {entry.kind === 'customer' && Number(entry.paidAmount ?? 0) > 0 ? <small>{money(entry.paidAmount ?? 0)} paid so far</small> : null}
         {entry.status === 'paid' ? <small className="green-text">Paid</small> : null}
         <div className="debt-progress">
           <i style={{ width: `${Math.max(8, (1 - entry.amount / Math.max(entry.original, 1)) * 100)}%` }} />
@@ -1128,7 +1173,7 @@ function DebtRow({ entry, onSettle }: { entry: Debt; onSettle: (entry: Debt) => 
       </div>
       <div className="debt-amount">
         <strong>{money(entry.amount)}</strong>
-        {entry.kind === 'customer' && entry.status !== 'paid' ? <button className="outline-btn settle-debt" disabled={entry.status === 'settling'} onClick={() => onSettle(entry)}>{entry.status === 'settling' ? 'Processing' : 'Mark paid'}</button> : null}
+        {entry.kind === 'customer' && entry.status !== 'paid' && entry.amount > 0 ? <button className="outline-btn settle-debt" disabled={entry.status === 'settling'} onClick={() => onPayDebt(entry)}>{entry.status === 'settling' ? 'Processing' : 'Pay now'}</button> : null}
       </div>
     </div>
   )

@@ -100,3 +100,9 @@ body { background:linear-gradient(135deg,#f8f9fa 0%,#eef5f5 100%); }
 .product-picker-scroll::-webkit-scrollbar-track { background:#eef3f4; border-radius:8px; }
 .product-picker-scroll::-webkit-scrollbar-thumb { background:#9bb8bd; border:2px solid #eef3f4; border-radius:8px; }
 .product-picker-scroll { scrollbar-width:thin; scrollbar-color:#9bb8bd #eef3f4; }
+.payment-balance { display:flex; flex-direction:column; gap:5px; padding:15px; margin-bottom:16px; border:1px solid #dcecea; border-radius:9px; background:#f3faf9; }
+.payment-balance span,.payment-remaining span { color:var(--muted); font-size:12px; font-weight:700; }
+.payment-balance strong { color:var(--primary); font-size:22px; }
+.payment-balance small { color:var(--muted); font-size:11px; }
+.payment-remaining { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:13px 0; margin-bottom:12px; border-bottom:1px solid var(--border); }
+.payment-remaining strong { color:var(--teal); font-size:18px; white-space:nowrap; }

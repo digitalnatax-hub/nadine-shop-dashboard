@@ -42,6 +42,7 @@ export async function GET() {
         phone: debt.phone ?? '',
         amount: Number(debt.amount ?? 0),
         original: Number(debt.original ?? debt.original_amount ?? debt.amount ?? 0),
+        paidAmount: Number(debt.paidAmount ?? 0),
         kind: debt.kind,
         status: debt.status ?? 'unpaid',
         description: debt.description ?? '',

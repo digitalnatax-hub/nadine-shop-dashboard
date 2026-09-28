@@ -11,6 +11,7 @@ export async function GET() {
       phone: debt.phone ?? '',
       amount: Number(debt.amount ?? 0),
       original: Number(debt.original ?? debt.amount ?? 0),
+      paidAmount: Number(debt.paidAmount ?? 0),
       kind: debt.kind,
       due: debt.due ? new Date(debt.due).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
       status: debt.status ?? 'unpaid',
@@ -64,7 +65,7 @@ export async function POST(request: Request) {
         const vat = Boolean(body.vat)
         const amount = subtotal * (vat ? 1.18 : 1)
         const description = String(body.description ?? `Credit sale: ${items.map((item) => item.name).join(', ')}`).trim()
-        const debt = { id, name, phone: body.phone ?? '', amount, original: amount, kind: 'customer', due, status: 'unpaid', description, items, vat, createdAt: new Date() }
+        const debt = { id, name, phone: body.phone ?? '', amount, original: amount, paidAmount: 0, kind: 'customer', due, status: 'unpaid', description, items, vat, createdAt: new Date() }
         await debts.insertOne(debt)
         return NextResponse.json({ ok: true, debt })
       } catch (error) {
@@ -82,6 +83,7 @@ export async function POST(request: Request) {
       phone: body.phone ?? '',
       amount,
       original: amount,
+      paidAmount: 0,
       kind,
       due,
       status: 'unpaid',

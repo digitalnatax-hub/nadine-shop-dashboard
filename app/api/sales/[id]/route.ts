@@ -87,13 +87,24 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
 
     if (sale.creditDebtId !== undefined) {
       const debts = await getCollection<any>('debts')
-      const debt = await debts.findOne({ id: Number(sale.creditDebtId), status: 'paid', saleId: id })
+      const debt = await debts.findOne({
+        id: Number(sale.creditDebtId),
+        $or: [{ paymentSaleIds: id }, { saleId: id }],
+      })
       if (!debt) return NextResponse.json({ ok: false, error: 'The settled debt record was not found.' }, { status: 409 })
-      const reopened = await debts.updateOne({ id: debt.id, status: 'paid', saleId: id }, { $set: { status: 'unpaid', amount: Number(debt.paidAmount ?? debt.original), paidAt: null, saleId: null } })
-      if (!reopened.modifiedCount) return NextResponse.json({ ok: false, error: 'Debt could not be reopened.' }, { status: 409 })
+      const paymentAmount = Number(sale.paymentAmount ?? sale.total ?? 0)
+      const oldPaidAmount = Number(debt.paidAmount ?? debt.original ?? 0)
+      const oldBalance = Number(debt.amount ?? 0)
+      const nextPaidAmount = Math.max(0, oldPaidAmount - paymentAmount)
+      const nextBalance = oldBalance + paymentAmount
+      const reopened = await debts.updateOne(
+        { id: debt.id, $or: [{ paymentSaleIds: id }, { saleId: id }] },
+        { $set: { status: 'unpaid', amount: nextBalance, paidAmount: nextPaidAmount, paidAt: null } },
+      )
+      if (!reopened.modifiedCount) return NextResponse.json({ ok: false, error: 'Debt balance could not be restored.' }, { status: 409 })
       const deletedSettlement = await sales.deleteOne({ _id: sale._id })
       if (!deletedSettlement.deletedCount) {
-        await debts.updateOne({ id: debt.id, status: 'unpaid' }, { $set: { status: 'paid', amount: 0, paidAt: debt.paidAt, saleId: id } })
+        await debts.updateOne({ id: debt.id }, { $set: { status: debt.status, amount: oldBalance, paidAmount: oldPaidAmount, paidAt: debt.paidAt } })
         return NextResponse.json({ ok: false, error: 'The payment sale could not be reversed.' }, { status: 409 })
       }
       return NextResponse.json({ ok: true, reversedSettlement: true })
