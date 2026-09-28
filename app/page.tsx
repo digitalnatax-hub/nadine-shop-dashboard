@@ -1237,21 +1237,46 @@ function FinancePage({ debts, pettyCash, setShowDebt, setShowPettyCash, onPayDeb
 }
 
 function DebtRow({ entry, onPayDebt }: { entry: Debt; onPayDebt: (entry: Debt) => void }) {
+  const paidAmount = Math.max(0, Number(entry.paidAmount ?? 0))
+  const remainingAmount = Math.max(0, Number(entry.amount ?? 0))
+  const originalAmount = Math.max(Number(entry.original ?? 0), paidAmount + remainingAmount, 1)
+  const isCustomer = entry.kind === 'customer'
+  const isCleared = isCustomer && (entry.status === 'paid' || remainingAmount === 0)
+  const paidPercent = isCleared ? 100 : Math.min(100, (paidAmount / originalAmount) * 100)
+
   return (
     <div className="debt-row side-scroll-item">
       <div className="debt-avatar">{entry.name[0]}</div>
       <div className="debt-info">
-        <strong>{entry.name}</strong>
-        <span>{entry.description || entry.phone || 'Supplier account'} · Due {entry.due}</span>
-        {entry.kind === 'customer' && Number(entry.paidAmount ?? 0) > 0 ? <small>{money(entry.paidAmount ?? 0)} paid so far</small> : null}
-        {entry.status === 'paid' ? <small className="green-text">Paid</small> : null}
-        <div className="debt-progress">
-          <i style={{ width: `${Math.max(8, (1 - entry.amount / Math.max(entry.original, 1)) * 100)}%` }} />
+        <div className="debt-person-title">
+          <strong>{entry.name}</strong>
+          {isCustomer ? <span className={`debt-state-pill ${isCleared ? 'is-cleared' : paidAmount > 0 ? 'is-partial' : 'is-unpaid'}`}>
+            {isCleared ? <><Check /> Cleared</> : entry.status === 'settling' ? 'Processing' : paidAmount > 0 ? 'Partially paid' : 'Unpaid'}
+          </span> : null}
         </div>
+        <span>{entry.description || entry.phone || 'Supplier account'} · Due {entry.due}</span>
+        {isCustomer ? (
+          <div className="debt-payment-progress">
+            <div className="debt-payment-meta">
+              <span>Paid so far</span>
+              <strong>{money(paidAmount)} <small>of {money(originalAmount)}</small></strong>
+            </div>
+            <div className="debt-progress" role="progressbar" aria-label={`Payment progress for ${entry.name}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(paidPercent)}>
+              <i style={{ width: `${paidPercent}%` }} />
+            </div>
+          </div>
+        ) : (
+          <div className="debt-progress">
+            <i style={{ width: `${Math.max(8, (1 - entry.amount / Math.max(entry.original, 1)) * 100)}%` }} />
+          </div>
+        )}
       </div>
       <div className="debt-amount">
-        <strong>{money(entry.amount)}</strong>
-        {entry.kind === 'customer' && entry.status !== 'paid' && entry.amount > 0 ? <button className="outline-btn settle-debt" disabled={entry.status === 'settling'} onClick={() => onPayDebt(entry)}>{entry.status === 'settling' ? 'Processing' : 'Pay now'}</button> : null}
+        {isCustomer ? <>
+          <span className="debt-remaining-label">{isCleared ? 'Remaining' : 'Remaining to pay'}</span>
+          <strong className={`debt-remaining-value ${isCleared ? 'is-cleared' : ''}`}>{money(remainingAmount)}</strong>
+          {isCleared ? <span className="debt-cleared-note"><Check /> Paid in full</span> : <button className="outline-btn settle-debt" disabled={entry.status === 'settling'} onClick={() => onPayDebt(entry)}>{entry.status === 'settling' ? 'Processing' : 'Pay now'}</button>}
+        </> : <strong>{money(entry.amount)}</strong>}
       </div>
     </div>
   )
