@@ -106,3 +106,48 @@ body { background:linear-gradient(135deg,#f8f9fa 0%,#eef5f5 100%); }
 .payment-balance small { color:var(--muted); font-size:11px; }
 .payment-remaining { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:13px 0; margin-bottom:12px; border-bottom:1px solid var(--border); }
 .payment-remaining strong { color:var(--teal); font-size:18px; white-space:nowrap; }
+.category-revenue-panel { overflow:hidden; }
+.category-revenue-panel .panel-head { align-items:flex-start; padding-bottom:14px; border-bottom:1px solid #edf1f3; }
+.category-revenue-total { color:var(--primary); font-size:16px; font-weight:800; white-space:nowrap; }
+.category-revenue-list { display:flex; flex-direction:column; gap:17px; padding-top:17px; }
+.category-revenue-row { --category-tone:var(--teal); }
+.category-revenue-row.tone-1 { --category-tone:var(--green); }
+.category-revenue-row.tone-2 { --category-tone:var(--amber); }
+.category-revenue-row.tone-3 { --category-tone:var(--primary); }
+.category-revenue-heading { display:grid; grid-template-columns:28px minmax(0,1fr) auto; align-items:center; gap:9px; }
+.category-rank { color:#9aabb2; font-size:10px; font-weight:800; font-variant-numeric:tabular-nums; }
+.category-revenue-heading > strong { overflow:hidden; color:var(--foreground); font-size:13px; text-overflow:ellipsis; white-space:nowrap; }
+.category-revenue-value { color:var(--category-tone); font-size:12px; font-weight:800; white-space:nowrap; }
+.category-revenue-track { height:7px; margin:8px 0 5px 37px; overflow:hidden; border-radius:10px; background:#edf2f3; }
+.category-revenue-track i { display:block; height:100%; border-radius:inherit; background:var(--category-tone); transition:width .35s ease; }
+.category-revenue-row small { display:block; margin-left:37px; color:var(--muted); font-size:10px; }
+.category-revenue-empty,.petty-cash-empty { min-height:150px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:7px; color:var(--muted); text-align:center; }
+.category-revenue-empty strong { color:var(--foreground); font-size:13px; }
+.category-revenue-empty > span,.petty-cash-empty small { max-width:230px; font-size:11px; line-height:1.5; }
+.empty-chart-mark { width:38px; height:38px; display:grid; place-items:center; margin-bottom:3px; border-radius:11px; color:var(--teal); background:#e8f5f3; }
+.petty-cash-panel { overflow:hidden; }
+.petty-cash-title { display:flex; align-items:center; gap:11px; }
+.petty-cash-mark { width:38px; height:38px; display:grid; place-items:center; flex:none; border-radius:10px; color:var(--primary); background:#e7f0f5; }
+.petty-cash-title h2 { margin:0 0 4px; }
+.petty-cash-title p { margin:0; color:var(--muted); font-size:11px; }
+.petty-cash-panel > .panel-head { padding-bottom:17px; border-bottom:1px solid #edf1f3; }
+.petty-cash-panel > .panel-head .outline-btn { white-space:nowrap; }
+.petty-cash-summary { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:16px 2px 13px; }
+.petty-cash-summary > div span,.petty-cash-summary > div strong { display:block; }
+.petty-cash-summary > div span { color:var(--muted); font-size:10px; font-weight:700; text-transform:uppercase; }
+.petty-cash-summary > div strong { margin-top:4px; color:var(--foreground); font-size:20px; font-variant-numeric:tabular-nums; }
+.petty-cash-count { padding:5px 9px; border-radius:999px; color:var(--primary); background:#edf4f7; font-size:10px; font-weight:800; white-space:nowrap; }
+.petty-cash-ledger { border-top:1px solid #edf1f3; }
+.petty-cash-entry { display:grid; grid-template-columns:34px minmax(0,1fr) auto; align-items:center; gap:11px; min-height:62px; border-bottom:1px solid #edf1f3; }
+.petty-cash-entry:last-child { border-bottom:0; }
+.expense-indicator { width:30px; height:30px; display:grid; place-items:center; border-radius:8px; color:var(--red); background:#fff0ee; }
+.expense-indicator svg { width:15px; height:15px; }
+.expense-description { min-width:0; }
+.expense-description strong,.expense-description small { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.expense-description strong { color:var(--foreground); font-size:12px; }
+.expense-description small { margin-top:4px; color:var(--muted); font-size:10px; }
+.expense-amount { color:var(--red); font-size:12px; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.petty-cash-empty { min-height:160px; }
+.petty-cash-empty > svg { color:#8baeb4; }
+.petty-cash-empty > span { color:var(--foreground); font-size:13px; font-weight:700; }
+@media(max-width:720px){ .category-revenue-heading { grid-template-columns:24px minmax(0,1fr) auto; gap:7px; } .category-revenue-track,.category-revenue-row small { margin-left:31px; } .petty-cash-panel > .panel-head { align-items:flex-start; flex-direction:column; gap:12px; } .petty-cash-panel > .panel-head .outline-btn { align-self:stretch; justify-content:center; } }

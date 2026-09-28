@@ -779,10 +779,10 @@ function Dashboard({ totals, lowStock, sales, products, setShowSale }: any) {
     return [...totalsByCategory.entries()]
       .map(([category, value]) => ({ category, value }))
       .sort((a, b) => b.value - a.value)
-      .slice(0, 4)
   }, [sales, products])
 
   const maxRevenue = Math.max(...weeklySales.map((entry) => entry.value), 1)
+  const categoryTotal = categoryRevenue.reduce((sum, entry) => sum + entry.value, 0)
 
   const cards = [
     { label: "Today's sales (excl. VAT)", value: money(totals.todaySales || 0), color: 'teal', icon: ShoppingCart, change: `${sales.length} sales` },
@@ -895,24 +895,32 @@ function Dashboard({ totals, lowStock, sales, products, setShowSale }: any) {
           </div>
         </div>
 
-        <div className="panel">
+        <div className="panel category-revenue-panel">
           <div className="panel-head">
             <div>
-              <h2>Category revenue</h2>
-              <p>Revenue from real sales data</p>
+              <h2>Revenue mix</h2>
+              <p>Sales grouped by product category</p>
             </div>
+            <span className="category-revenue-total">{money(categoryTotal)}</span>
           </div>
-          <div className="mini-list">
+          <div className="category-revenue-list">
             {categoryRevenue.length ? (
-              categoryRevenue.map(({ category, value }) => (
-                <div className="mini-row" key={category}>
-                  <span>{category}</span>
-                  <strong>{money(value)}</strong>
+              categoryRevenue.slice(0, 5).map(({ category, value }, index) => (
+                <div className={`category-revenue-row tone-${index % 4}`} key={category}>
+                  <div className="category-revenue-heading">
+                    <span className="category-rank">{String(index + 1).padStart(2, '0')}</span>
+                    <strong>{category}</strong>
+                    <span className="category-revenue-value">{money(value)}</span>
+                  </div>
+                  <div className="category-revenue-track"><i style={{ width: `${Math.max(4, (value / Math.max(...categoryRevenue.map((entry) => entry.value), 1)) * 100)}%` }} /></div>
+                  <small>{categoryTotal ? `${Math.round((value / categoryTotal) * 100)}% of category revenue` : 'No revenue yet'}</small>
                 </div>
               ))
             ) : (
-              <div className="mini-row empty-state">
-                <span>No sales recorded yet</span>
+              <div className="category-revenue-empty">
+                <div className="empty-chart-mark"><BarChart3 /></div>
+                <strong>No category sales yet</strong>
+                <span>Category revenue will appear after a sale is recorded.</span>
               </div>
             )}
           </div>
@@ -1139,19 +1147,27 @@ function FinancePage({ debts, pettyCash, setShowDebt, setShowPettyCash, onPayDeb
 
       <div className="panel petty-cash-panel">
         <div className="panel-head">
-          <div>
-            <h2>Petty cash</h2>
-            <p>Withdrawals reduce the profit for their recorded date.</p>
-          </div>
-          <button className="outline-btn" onClick={setShowPettyCash}><Wallet /> Record withdrawal</button>
-        </div>
-        <div className="mini-list">
-          {pettyCash.length ? pettyCash.slice(0, 8).map((entry: PettyCash) => (
-            <div className="mini-row" key={entry.id}>
-              <span><strong>{entry.reason}</strong><small>{entry.date}</small></span>
-              <strong className="negative">−{money(entry.amount)}</strong>
+          <div className="petty-cash-title">
+            <span className="petty-cash-mark"><Wallet /></span>
+            <div>
+              <h2>Petty cash</h2>
+              <p>Shop expenses paid from sales cash</p>
             </div>
-          )) : <div className="empty-state">No petty cash withdrawals recorded.</div>}
+          </div>
+          <button className="outline-btn" onClick={setShowPettyCash}><Plus /> Record expense</button>
+        </div>
+        <div className="petty-cash-summary">
+          <div><span>Total withdrawals</span><strong>{money(pettyCash.reduce((sum: number, entry: PettyCash) => sum + entry.amount, 0))}</strong></div>
+          <span className="petty-cash-count">{pettyCash.length} {pettyCash.length === 1 ? 'expense' : 'expenses'}</span>
+        </div>
+        <div className="petty-cash-ledger">
+          {pettyCash.length ? pettyCash.slice(0, 6).map((entry: PettyCash) => (
+            <div className="petty-cash-entry" key={entry.id}>
+              <span className="expense-indicator"><Wallet /></span>
+              <span className="expense-description"><strong>{entry.reason}</strong><small>{new Date(`${entry.date}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</small></span>
+              <strong className="expense-amount">−{money(entry.amount)}</strong>
+            </div>
+          )) : <div className="petty-cash-empty"><Wallet /><span>No expenses recorded yet</span><small>Your petty cash entries will appear here.</small></div>}
         </div>
       </div>
     </>
