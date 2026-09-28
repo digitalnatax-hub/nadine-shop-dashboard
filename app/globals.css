@@ -160,9 +160,9 @@ body { background:linear-gradient(135deg,#f8f9fa 0%,#eef5f5 100%); }
 .list-scroll-buttons button { display:grid; place-items:center; width:34px; height:34px; padding:0; border:1px solid var(--border); border-radius:8px; color:var(--primary); background:#fff; }
 .list-scroll-buttons button:hover { border-color:#9bd7d2; background:#f2fbfa; }
 .list-scroll-buttons svg { width:16px; height:16px; }
-.side-scroll-list { display:flex; flex-direction:row; gap:12px; overflow-x:auto; overscroll-behavior-x:contain; padding:8px 2px 13px; scrollbar-width:thin; scrollbar-color:#9bb8bd #eef3f4; }
-.side-scroll-list > * { flex:0 0 min(300px, 85%); }
-.side-scroll-list::-webkit-scrollbar { height:8px; }
+.side-scroll-list { display:flex; flex-direction:column; gap:12px; max-height:360px; overflow-x:hidden; overflow-y:auto; overscroll-behavior-y:contain; padding:8px 5px 13px 2px; scrollbar-width:thin; scrollbar-color:#9bb8bd #eef3f4; }
+.side-scroll-list > * { flex:0 0 auto; width:100%; }
+.side-scroll-list::-webkit-scrollbar { width:8px; }
 .side-scroll-list::-webkit-scrollbar-track { background:#eef3f4; border-radius:8px; }
 .side-scroll-list::-webkit-scrollbar-thumb { background:#9bb8bd; border:2px solid #eef3f4; border-radius:8px; }
-@media(max-width:720px){ .list-browse-controls { gap:6px; } .list-scroll-buttons { gap:4px; } .list-scroll-buttons button { width:32px; height:32px; } .side-scroll-list > * { flex-basis:min(280px, 88%); } }
+@media(max-width:720px){ .list-browse-controls { gap:6px; } .list-scroll-buttons { gap:4px; } .list-scroll-buttons button { width:32px; height:32px; } .side-scroll-list { max-height:320px; } }

@@ -7,8 +7,9 @@ import {
   Bell,
   Boxes,
   Check,
-  ChevronLeft,
+  ChevronDown,
   ChevronRight,
+  ChevronUp,
   CircleDollarSign,
   FileText,
   KeyRound,
@@ -962,7 +963,7 @@ function BrowseControls({
 
   const scroll = (direction: -1 | 1) => {
     const list = scrollRef.current
-    if (list) list.scrollBy({ left: direction * list.clientWidth * 0.8, behavior: 'smooth' })
+    if (list) list.scrollBy({ top: direction * list.clientHeight * 0.8, behavior: 'smooth' })
   }
 
   return (
@@ -972,8 +973,8 @@ function BrowseControls({
         <input aria-label={placeholder} placeholder={placeholder} value={query} onChange={(event) => onQueryChange(event.target.value)} />
       </label>
       <div className="list-scroll-buttons">
-        <button type="button" aria-label="Scroll list left" title="Scroll left" onClick={() => scroll(-1)}><ChevronLeft /></button>
-        <button type="button" aria-label="Scroll list right" title="Scroll right" onClick={() => scroll(1)}><ChevronRight /></button>
+        <button type="button" aria-label="Scroll list up" title="Scroll up" onClick={() => scroll(-1)}><ChevronUp /></button>
+        <button type="button" aria-label="Scroll list down" title="Scroll down" onClick={() => scroll(1)}><ChevronDown /></button>
       </div>
     </div>
   )
