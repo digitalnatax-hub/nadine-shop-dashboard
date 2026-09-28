@@ -193,3 +193,4 @@ body { background:linear-gradient(135deg,#f8f9fa 0%,#eef5f5 100%); }
 .debt-cleared-note { display:inline-flex; align-items:center; gap:4px; color:var(--green); font-size:10px; font-weight:800; white-space:nowrap; }
 .debt-row .settle-debt { align-self:flex-end; }
 @media(max-width:720px){ .debt-row { align-items:flex-start; gap:8px; } .debt-avatar { flex:none; } .debt-info { min-width:0; } .debt-amount { min-width:96px; } .debt-payment-progress { padding:8px; } .debt-payment-meta { align-items:flex-start; flex-direction:column; gap:2px; } .debt-payment-meta > strong { text-align:left; } }
+.petty-cash-ledger.side-scroll-list { max-height:245px; overflow-y:scroll; }

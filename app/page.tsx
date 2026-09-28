@@ -1152,10 +1152,13 @@ function FinancePage({ debts, pettyCash, setShowDebt, setShowPettyCash, onPayDeb
   const suppliers = debts.filter((item: Debt) => item.kind === 'supplier')
   const [customerSearch, setCustomerSearch] = useState('')
   const [supplierSearch, setSupplierSearch] = useState('')
+  const [pettyCashSearch, setPettyCashSearch] = useState('')
   const customerListRef = useRef<HTMLDivElement>(null)
   const supplierListRef = useRef<HTMLDivElement>(null)
+  const pettyCashListRef = useRef<HTMLDivElement>(null)
   const visibleCustomers = customers.filter((entry: Debt) => `${entry.name} ${entry.phone ?? ''} ${entry.description ?? ''}`.toLowerCase().includes(customerSearch.toLowerCase()))
   const visibleSuppliers = suppliers.filter((entry: Debt) => `${entry.name} ${entry.phone ?? ''} ${entry.description ?? ''}`.toLowerCase().includes(supplierSearch.toLowerCase()))
+  const visiblePettyCash = pettyCash.filter((entry: PettyCash) => `${entry.reason} ${entry.date} ${entry.amount}`.toLowerCase().includes(pettyCashSearch.toLowerCase()))
 
   return (
     <>
@@ -1222,14 +1225,15 @@ function FinancePage({ debts, pettyCash, setShowDebt, setShowPettyCash, onPayDeb
           <div><span>Total withdrawals</span><strong>{money(pettyCash.reduce((sum: number, entry: PettyCash) => sum + entry.amount, 0))}</strong></div>
           <span className="petty-cash-count">{pettyCash.length} {pettyCash.length === 1 ? 'expense' : 'expenses'}</span>
         </div>
-        <div className="petty-cash-ledger">
-          {pettyCash.length ? pettyCash.slice(0, 6).map((entry: PettyCash) => (
+        <BrowseControls count={pettyCash.length} query={pettyCashSearch} onQueryChange={setPettyCashSearch} scrollRef={pettyCashListRef} placeholder="Search expenses..." />
+        <div className={`petty-cash-ledger ${pettyCash.length > 3 ? 'side-scroll-list' : ''}`} ref={pettyCashListRef}>
+          {visiblePettyCash.length ? visiblePettyCash.map((entry: PettyCash) => (
             <div className="petty-cash-entry" key={entry.id}>
               <span className="expense-indicator"><Wallet /></span>
               <span className="expense-description"><strong>{entry.reason}</strong><small>{new Date(`${entry.date}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</small></span>
               <strong className="expense-amount">−{money(entry.amount)}</strong>
             </div>
-          )) : <div className="petty-cash-empty"><Wallet /><span>No expenses recorded yet</span><small>Your petty cash entries will appear here.</small></div>}
+          )) : pettyCash.length ? <div className="empty-state">No matching expenses.</div> : <div className="petty-cash-empty"><Wallet /><span>No expenses recorded yet</span><small>Your petty cash entries will appear here.</small></div>}
         </div>
       </div>
     </>
