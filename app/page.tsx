@@ -1,12 +1,13 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertTriangle,
   BarChart3,
   Bell,
   Boxes,
   Check,
+  ChevronLeft,
   ChevronRight,
   CircleDollarSign,
   FileText,
@@ -717,6 +718,10 @@ function Header({ title, subtitle, action, onAction }: { title: string; subtitle
 
 function Dashboard({ totals, lowStock, sales, products, setShowSale }: any) {
   const [greeting, setGreeting] = useState('Good morning')
+  const [stockSearch, setStockSearch] = useState('')
+  const [revenueSearch, setRevenueSearch] = useState('')
+  const stockListRef = useRef<HTMLDivElement>(null)
+  const revenueListRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const hour = new Date().getHours()
@@ -783,6 +788,14 @@ function Dashboard({ totals, lowStock, sales, products, setShowSale }: any) {
 
   const maxRevenue = Math.max(...weeklySales.map((entry) => entry.value), 1)
   const categoryTotal = categoryRevenue.reduce((sum, entry) => sum + entry.value, 0)
+  const visibleStock = products
+    .filter((product: Product) => `${product.name} ${product.category}`.toLowerCase().includes(stockSearch.toLowerCase()))
+    .slice()
+    .sort((a: Product, b: Product) => (a.stock / Math.max(a.min, 1)) - (b.stock / Math.max(b.min, 1)))
+  const visibleRevenue = categoryRevenue.filter(({ category }) =>
+    category.toLowerCase().includes(revenueSearch.toLowerCase()) ||
+    products.some((product: Product) => product.category === category && product.name.toLowerCase().includes(revenueSearch.toLowerCase())),
+  )
 
   const cards = [
     { label: "Today's sales (excl. VAT)", value: money(totals.todaySales || 0), color: 'teal', icon: ShoppingCart, change: `${sales.length} sales` },
@@ -880,8 +893,9 @@ function Dashboard({ totals, lowStock, sales, products, setShowSale }: any) {
             </div>
             <span className="count-badge teal-bg">{products.length}</span>
           </div>
-          <div className="stock-check-list">
-            {products.length ? products.slice().sort((a: Product, b: Product) => (a.stock / Math.max(a.min, 1)) - (b.stock / Math.max(b.min, 1))).slice(0, 4).map((product: Product) => (
+          <BrowseControls count={products.length} query={stockSearch} onQueryChange={setStockSearch} scrollRef={stockListRef} placeholder="Search products..." />
+          <div className={`stock-check-list ${products.length > 3 ? 'side-scroll-list' : ''}`} ref={stockListRef}>
+            {visibleStock.length ? visibleStock.map((product: Product) => (
               <div className="stock-check-row" key={product.id}>
                 <div className="stock-check-icon"><Package /></div>
                 <div className="stock-check-info">
@@ -891,7 +905,7 @@ function Dashboard({ totals, lowStock, sales, products, setShowSale }: any) {
                 </div>
                 <span className={product.stock <= product.min ? 'badge warning' : 'badge success'}>{product.stock <= product.min ? 'Restock' : 'Healthy'}</span>
               </div>
-            )) : <div className="empty-state">No products have been added yet.</div>}
+            )) : <div className="empty-state">{products.length ? 'No matching products.' : 'No products have been added yet.'}</div>}
           </div>
         </div>
 
@@ -903,9 +917,10 @@ function Dashboard({ totals, lowStock, sales, products, setShowSale }: any) {
             </div>
             <span className="category-revenue-total">{money(categoryTotal)}</span>
           </div>
-          <div className="category-revenue-list">
-            {categoryRevenue.length ? (
-              categoryRevenue.slice(0, 5).map(({ category, value }, index) => (
+          <BrowseControls count={products.length} query={revenueSearch} onQueryChange={setRevenueSearch} scrollRef={revenueListRef} placeholder="Search categories or products..." />
+          <div className={`category-revenue-list ${products.length > 3 ? 'side-scroll-list' : ''}`} ref={revenueListRef}>
+            {visibleRevenue.length ? (
+              visibleRevenue.map(({ category, value }, index) => (
                 <div className={`category-revenue-row tone-${index % 4}`} key={category}>
                   <div className="category-revenue-heading">
                     <span className="category-rank">{String(index + 1).padStart(2, '0')}</span>
@@ -919,14 +934,48 @@ function Dashboard({ totals, lowStock, sales, products, setShowSale }: any) {
             ) : (
               <div className="category-revenue-empty">
                 <div className="empty-chart-mark"><BarChart3 /></div>
-                <strong>No category sales yet</strong>
-                <span>Category revenue will appear after a sale is recorded.</span>
+                <strong>{categoryRevenue.length ? 'No matching categories' : 'No category sales yet'}</strong>
+                <span>{categoryRevenue.length ? 'Try another product or category name.' : 'Category revenue will appear after a sale is recorded.'}</span>
               </div>
             )}
           </div>
         </div>
       </div>
     </>
+  )
+}
+
+function BrowseControls({
+  count,
+  query,
+  onQueryChange,
+  scrollRef,
+  placeholder,
+}: {
+  count: number
+  query: string
+  onQueryChange: (value: string) => void
+  scrollRef: React.RefObject<HTMLDivElement | null>
+  placeholder: string
+}) {
+  if (count <= 3) return null
+
+  const scroll = (direction: -1 | 1) => {
+    const list = scrollRef.current
+    if (list) list.scrollBy({ left: direction * list.clientWidth * 0.8, behavior: 'smooth' })
+  }
+
+  return (
+    <div className="list-browse-controls">
+      <label className="list-search-box">
+        <Search />
+        <input aria-label={placeholder} placeholder={placeholder} value={query} onChange={(event) => onQueryChange(event.target.value)} />
+      </label>
+      <div className="list-scroll-buttons">
+        <button type="button" aria-label="Scroll list left" title="Scroll left" onClick={() => scroll(-1)}><ChevronLeft /></button>
+        <button type="button" aria-label="Scroll list right" title="Scroll right" onClick={() => scroll(1)}><ChevronRight /></button>
+      </div>
+    </div>
   )
 }
 
@@ -1100,6 +1149,12 @@ function DebtPaymentModal({ debt, close, onPay }: { debt: Debt; close: () => voi
 function FinancePage({ debts, pettyCash, setShowDebt, setShowPettyCash, onPayDebt }: any) {
   const customers = debts.filter((item: Debt) => item.kind === 'customer')
   const suppliers = debts.filter((item: Debt) => item.kind === 'supplier')
+  const [customerSearch, setCustomerSearch] = useState('')
+  const [supplierSearch, setSupplierSearch] = useState('')
+  const customerListRef = useRef<HTMLDivElement>(null)
+  const supplierListRef = useRef<HTMLDivElement>(null)
+  const visibleCustomers = customers.filter((entry: Debt) => `${entry.name} ${entry.phone ?? ''} ${entry.description ?? ''}`.toLowerCase().includes(customerSearch.toLowerCase()))
+  const visibleSuppliers = suppliers.filter((entry: Debt) => `${entry.name} ${entry.phone ?? ''} ${entry.description ?? ''}`.toLowerCase().includes(supplierSearch.toLowerCase()))
 
   return (
     <>
@@ -1126,9 +1181,12 @@ function FinancePage({ debts, pettyCash, setShowDebt, setShowPettyCash, onPayDeb
             </div>
             <span className="count-badge teal-bg">{customers.length}</span>
           </div>
-          {customers.map((entry: Debt) => (
+          <BrowseControls count={customers.length} query={customerSearch} onQueryChange={setCustomerSearch} scrollRef={customerListRef} placeholder="Search customers..." />
+          <div className={`debt-list ${customers.length > 3 ? 'side-scroll-list' : ''}`} ref={customerListRef}>
+          {visibleCustomers.length ? visibleCustomers.map((entry: Debt) => (
             <DebtRow key={entry.id} entry={entry} onPayDebt={onPayDebt} />
-          ))}
+          )) : <div className="empty-state">{customers.length ? 'No matching customers.' : 'No customer debts recorded.'}</div>}
+          </div>
         </div>
 
         <div className="panel">
@@ -1139,9 +1197,12 @@ function FinancePage({ debts, pettyCash, setShowDebt, setShowPettyCash, onPayDeb
             </div>
             <span className="count-badge amber-bg">{suppliers.length}</span>
           </div>
-          {suppliers.map((entry: Debt) => (
+          <BrowseControls count={suppliers.length} query={supplierSearch} onQueryChange={setSupplierSearch} scrollRef={supplierListRef} placeholder="Search suppliers..." />
+          <div className={`debt-list ${suppliers.length > 3 ? 'side-scroll-list' : ''}`} ref={supplierListRef}>
+          {visibleSuppliers.length ? visibleSuppliers.map((entry: Debt) => (
             <DebtRow key={entry.id} entry={entry} onPayDebt={onPayDebt} />
-          ))}
+          )) : <div className="empty-state">{suppliers.length ? 'No matching suppliers.' : 'No supplier debts recorded.'}</div>}
+          </div>
         </div>
       </div>
 
@@ -1176,7 +1237,7 @@ function FinancePage({ debts, pettyCash, setShowDebt, setShowPettyCash, onPayDeb
 
 function DebtRow({ entry, onPayDebt }: { entry: Debt; onPayDebt: (entry: Debt) => void }) {
   return (
-    <div className="debt-row">
+    <div className="debt-row side-scroll-item">
       <div className="debt-avatar">{entry.name[0]}</div>
       <div className="debt-info">
         <strong>{entry.name}</strong>
