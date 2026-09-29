@@ -72,6 +72,7 @@ type PettyCash = {
   date: string
   amount: number
   reason: string
+  type: 'expense' | 'transfer' | 'owner_drawing'
 }
 
 type CartItem = {
@@ -150,16 +151,17 @@ export default function Page() {
     const todaySales = sales.filter((entry) => entry.date === today)
     const todayPettyCash = pettyCash.filter((entry) => entry.date === today)
     const todayVat = todaySales.reduce((sum, entry) => sum + (entry.vat ? Number(entry.total) - Number(entry.total) / 1.18 : 0), 0)
-    const todayPettyTotal = todayPettyCash.reduce((sum, entry) => sum + Number(entry.amount), 0)
+    const todayRevenue = todaySales.reduce((sum, entry) => sum + (entry.vat ? Number(entry.total) / 1.18 : Number(entry.total)), 0)
+    const todayCost = todaySales.flatMap((entry) => entry.items ?? []).reduce((sum, item) => sum + Number(item.buy ?? 0) * Number(item.qty ?? 0), 0)
+    const todayOperatingExpenses = todayPettyCash.filter((entry) => entry.type === 'expense').reduce((sum, entry) => sum + Number(entry.amount), 0)
 
     return {
       sales: sales.reduce((sum, entry) => sum + Number(entry.total), 0),
       profit: sales.reduce((sum, entry) => sum + Number(entry.profit), 0),
-      todaySales: todaySales.reduce((sum, entry) => sum + (entry.vat ? Number(entry.total) / 1.18 : Number(entry.total)), 0),
-      todayGrossProfit: todaySales.reduce((sum, entry) => sum + Number(entry.profit), 0),
-      todayNetProfit: todaySales.reduce((sum, entry) => sum + Number(entry.profit), 0) - todayPettyTotal,
+      todaySales: todayRevenue,
+      todayGrossProfit: todayRevenue - todayCost,
+      todayNetProfit: todayRevenue - todayCost - todayOperatingExpenses,
       todayVat,
-      todayPettyTotal,
       owed: debts.filter((entry) => entry.kind === 'customer').reduce((sum, entry) => sum + Number(entry.amount), 0),
       owe: debts.filter((entry) => entry.kind === 'supplier').reduce((sum, entry) => sum + Number(entry.amount), 0),
     }
@@ -430,7 +432,7 @@ export default function Page() {
     setShowDebt(false)
   }
 
-  const createPettyCash = async (input: { amount: number; reason: string; date: string }) => {
+  const createPettyCash = async (input: { amount: number; reason: string; date: string; type: PettyCash['type'] }) => {
     const response = await fetch('/api/petty-cash', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -814,7 +816,7 @@ function Dashboard({ totals, lowStock, sales, products, setShowSale }: any) {
     { label: "Today's sales (excl. VAT)", value: money(totals.todaySales || 0), color: 'teal', icon: ShoppingCart, change: `${sales.length} sales` },
     { label: "Today's gross profit", value: money(totals.todayGrossProfit || 0), color: 'teal', icon: TrendingUp, change: 'Before petty cash' },
     { label: "Today's net profit", value: money(totals.todayNetProfit || 0), color: 'green', icon: TrendingUp, change: 'After petty cash' },
-    { label: 'VAT payable', value: money(totals.todayVat || 0), color: 'amber', icon: CircleDollarSign, change: 'From included VAT' },
+    { label: 'Output VAT collected', value: money(totals.todayVat || 0), color: 'amber', icon: CircleDollarSign, change: 'Input VAT not tracked' },
     { label: 'Customers owe', value: money(totals.owed), color: 'amber', icon: Users, change: 'Open customer debts' },
     { label: 'Low stock items', value: lowStock.length, color: 'red', icon: AlertTriangle, change: 'Needs attention' },
   ]
@@ -1256,10 +1258,10 @@ function FinancePage({ debts, pettyCash, setShowDebt, setShowPettyCash, onPayDeb
               <p>Shop expenses paid from sales cash</p>
             </div>
           </div>
-          <button className="outline-btn" onClick={setShowPettyCash}><Plus /> Record expense</button>
+          <button className="outline-btn" onClick={setShowPettyCash}><Plus /> Record transaction</button>
         </div>
         <div className="petty-cash-summary">
-          <div><span>Total withdrawals</span><strong>{money(pettyCash.reduce((sum: number, entry: PettyCash) => sum + entry.amount, 0))}</strong></div>
+                <div><span>Total petty cash transactions</span><strong>{money(pettyCash.reduce((sum: number, entry: PettyCash) => sum + entry.amount, 0))}</strong></div>
           <span className="petty-cash-count">{pettyCash.length} {pettyCash.length === 1 ? 'expense' : 'expenses'}</span>
         </div>
         <BrowseControls count={pettyCash.length} query={pettyCashSearch} onQueryChange={setPettyCashSearch} scrollRef={pettyCashListRef} placeholder="Search expenses..." />
@@ -1267,7 +1269,7 @@ function FinancePage({ debts, pettyCash, setShowDebt, setShowPettyCash, onPayDeb
           {visiblePettyCash.length ? visiblePettyCash.map((entry: PettyCash) => (
             <div className="petty-cash-entry" key={entry.id}>
               <span className="expense-indicator"><Wallet /></span>
-              <span className="expense-description"><strong>{entry.reason}</strong><small>{new Date(`${entry.date}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</small></span>
+              <span className="expense-description"><strong>{entry.reason}</strong><small>{entry.type === 'expense' ? 'Business expense' : entry.type === 'owner_drawing' ? 'Owner drawing' : 'Cash transfer'} · {new Date(`${entry.date}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</small></span>
               <strong className="expense-amount">−{money(entry.amount)}</strong>
             </div>
           )) : pettyCash.length ? <div className="empty-state">No matching expenses.</div> : <div className="petty-cash-empty"><Wallet /><span>No expenses recorded yet</span><small>Your petty cash entries will appear here.</small></div>}
@@ -1337,12 +1339,13 @@ function Reports({ sales, products, pettyCash, totals }: any) {
     const entries = sales.filter((entry: Sale) => entry.date >= startDate && entry.date <= selectedDate)
     const revenue = entries.reduce((sum: number, entry: Sale) => sum + (entry.vat ? Number(entry.total || 0) / 1.18 : Number(entry.total || 0)), 0)
     const vat = entries.reduce((sum: number, entry: Sale) => sum + (entry.vat ? Number(entry.total || 0) - Number(entry.total || 0) / 1.18 : 0), 0)
-    const salesProfit = entries.reduce((sum: number, entry: Sale) => sum + Number(entry.profit || 0), 0)
     const cost = entries.flatMap((entry: Sale) => entry.items).reduce((sum: number, item: Sale['items'][number]) => sum + Number(item.buy || 0) * Number(item.qty || 0), 0)
-    const pettyTotal = pettyCash.filter((entry: PettyCash) => entry.date >= startDate && entry.date <= selectedDate).reduce((sum: number, entry: PettyCash) => sum + Number(entry.amount || 0), 0)
-    const grossProfit = salesProfit
-    const netProfit = grossProfit - pettyTotal
-    return { entries, revenue, vat, pettyTotal, grossProfit, netProfit, cost, loss: Math.max(0, -netProfit), startDate }
+    const operatingExpenses = pettyCash.filter((entry: PettyCash) => entry.type === 'expense' && entry.date >= startDate && entry.date <= selectedDate).reduce((sum: number, entry: PettyCash) => sum + Number(entry.amount || 0), 0)
+    const ownerDrawings = pettyCash.filter((entry: PettyCash) => entry.type === 'owner_drawing' && entry.date >= startDate && entry.date <= selectedDate).reduce((sum: number, entry: PettyCash) => sum + Number(entry.amount || 0), 0)
+    const grossProfit = revenue - cost
+    const operatingProfit = grossProfit - operatingExpenses
+    const netProfit = operatingProfit
+    return { entries, revenue, vat, operatingExpenses, ownerDrawings, grossProfit, operatingProfit, netProfit, cost, loss: Math.max(0, -netProfit), startDate }
   }, [range, selectedDate, sales, pettyCash])
 
   const productPerformance = useMemo(() => {
@@ -1383,7 +1386,7 @@ function Reports({ sales, products, pettyCash, totals }: any) {
 
       <div className="report-kpis">
         <div>
-          <span>Total revenue</span>
+          <span>Sales revenue (excl. VAT)</span>
           <strong>{money(report.revenue)}</strong>
           <small>{report.entries.length} sale{report.entries.length === 1 ? '' : 's'} in period</small>
         </div>
@@ -1400,7 +1403,7 @@ function Reports({ sales, products, pettyCash, totals }: any) {
         <div>
           <span>Net profit</span>
           <strong className={report.netProfit >= 0 ? 'green-text' : 'negative'}>{money(report.netProfit)}</strong>
-          <small>{report.netProfit >= 0 ? 'After petty cash' : `Loss: ${money(report.loss)}`}</small>
+          <small>{report.netProfit >= 0 ? 'After recorded business expenses' : `Loss: ${money(report.loss)}`}</small>
         </div>
       </div>
 
@@ -1409,17 +1412,36 @@ function Reports({ sales, products, pettyCash, totals }: any) {
           <div><span className="eyebrow">NADINE&apos;S SHOP</span><h2>Financial statement</h2><p>{report.startDate} to {selectedDate}</p></div>
           <FileText />
         </div>
-        <div className="document-grid">
-          <div><span>Sales revenue</span><strong>{money(report.revenue)}</strong></div>
-          <div><span>Cost of goods sold</span><strong>{money(report.cost)}</strong></div>
-          <div><span>Gross profit</span><strong className={report.grossProfit >= 0 ? 'green-text' : 'negative'}>{money(report.grossProfit)}</strong></div>
-          <div><span>VAT payable</span><strong>{money(report.vat)}</strong></div>
-          <div><span>Petty cash withdrawn</span><strong className="negative">−{money(report.pettyTotal)}</strong></div>
-          <div><span>Net profit</span><strong className={report.netProfit >= 0 ? 'green-text' : 'negative'}>{money(report.netProfit)}</strong></div>
-          <div><span>Customer receivables</span><strong>{money(totals.owed)}</strong></div>
-          <div><span>Supplier payables</span><strong>{money(totals.owe)}</strong></div>
-          <div><span>Inventory at cost</span><strong>{money(products.reduce((sum: number, product: Product) => sum + product.stock * product.buy, 0))}</strong></div>
-        </div>
+        <section className="statement-section">
+          <h3>Income statement</h3>
+          <div className="document-grid">
+            <div><span>Sales revenue (excluding VAT)</span><strong>{money(report.revenue)}</strong></div>
+            <div><span>Cost of goods sold</span><strong>−{money(report.cost)}</strong><small>Cost recorded on items sold; purchases are not tracked.</small></div>
+            <div><span>Gross profit</span><strong className={report.grossProfit >= 0 ? 'green-text' : 'negative'}>{money(report.grossProfit)}</strong></div>
+            <div><span>Recorded business expenses</span><strong>−{money(report.operatingExpenses)}</strong></div>
+            <div><span>Operating profit</span><strong className={report.operatingProfit >= 0 ? 'green-text' : 'negative'}>{money(report.operatingProfit)}</strong></div>
+            <div><span>Net profit (recorded items)</span><strong className={report.netProfit >= 0 ? 'green-text' : 'negative'}>{money(report.netProfit)}</strong><small>Other expenses and income are not tracked.</small></div>
+          </div>
+        </section>
+        <section className="statement-section">
+          <h3>Tax and owner activity</h3>
+          <div className="document-grid">
+            <div><span>Output VAT collected</span><strong>{money(report.vat)}</strong></div>
+            <div><span>Input VAT</span><strong>Not tracked</strong></div>
+            <div><span>Net VAT payable</span><strong>Cannot calculate</strong></div>
+            <div><span>Owner drawings (selected period)</span><strong>{money(report.ownerDrawings)}</strong><small>Not included in expenses or net profit.</small></div>
+          </div>
+        </section>
+        <section className="statement-section">
+          <h3>Financial position (current balances)</h3>
+          <div className="document-grid">
+            <div><span>Inventory at recorded cost</span><strong>{money(products.reduce((sum: number, product: Product) => sum + product.stock * product.buy, 0))}</strong></div>
+            <div><span>Customer receivables</span><strong>{money(totals.owed)}</strong></div>
+            <div><span>Supplier payables</span><strong>{money(totals.owe)}</strong></div>
+            <div><span>Cash and bank</span><strong>Not tracked</strong></div>
+            <div><span>Owner capital and retained earnings</span><strong>Not tracked</strong></div>
+          </div>
+        </section>
       </div>
 
       <section className="panel product-performance-panel">
@@ -1849,26 +1871,28 @@ function DebtModal({ close, onSave }: { close: () => void; onSave: (payload: { n
   )
 }
 
-function PettyCashModal({ close, onSave }: { close: () => void; onSave: (payload: { amount: number; reason: string; date: string }) => Promise<void> }) {
+function PettyCashModal({ close, onSave }: { close: () => void; onSave: (payload: { amount: number; reason: string; date: string; type: PettyCash['type'] }) => Promise<void> }) {
   const [amount, setAmount] = useState('')
   const [reason, setReason] = useState('')
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
+  const [type, setType] = useState<PettyCash['type'] | ''>('')
 
   const save = async () => {
-    if (!amount || !reason.trim()) {
+    if (!amount || !reason.trim() || !type) {
       return
     }
-    await onSave({ amount: Number(amount), reason: reason.trim(), date })
+    await onSave({ amount: Number(amount), reason: reason.trim(), date, type })
   }
 
   return (
-    <Modal title="Record petty cash withdrawal" close={close}>
+    <Modal title="Record petty cash transaction" close={close}>
       <div className="form-grid">
-        <label>Amount withdrawn<input type="number" min="0" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="RWF" /></label>
+        <label>Amount<input type="number" min="0" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="RWF" /></label>
         <label>Date<input type="date" value={date} onChange={(event) => setDate(event.target.value)} /></label>
+        <label>Transaction type<select required value={type} onChange={(event) => setType(event.target.value as PettyCash['type'] | '')}><option value="">Select how the cash was used</option><option value="expense">Business expense</option><option value="transfer">Cash transfer (not an expense)</option><option value="owner_drawing">Owner drawing (not an expense)</option></select></label>
         <label>Reason<input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="e.g. Bought packaging materials" /></label>
       </div>
-      <button className="primary-btn full" onClick={() => void save()}>Save withdrawal <Wallet /></button>
+      <button className="primary-btn full" disabled={!type || !amount || !reason.trim()} onClick={() => void save()}>Save transaction <Wallet /></button>
     </Modal>
   )
 }

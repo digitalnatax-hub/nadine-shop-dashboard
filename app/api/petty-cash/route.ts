@@ -10,6 +10,7 @@ export async function GET() {
       date: entry.date,
       amount: Number(entry.amount ?? 0),
       reason: entry.reason,
+      type: entry.type ?? 'transfer',
     })) })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unable to fetch petty cash records.'
@@ -24,12 +25,13 @@ export async function POST(request: Request) {
     const amount = Number(body.amount ?? 0)
     const reason = String(body.reason ?? '').trim()
     const date = String(body.date ?? new Date().toISOString().slice(0, 10))
+    const type = ['expense', 'transfer', 'owner_drawing'].includes(body.type) ? body.type : null
 
-    if (!Number.isFinite(amount) || amount <= 0 || !reason) {
-      return NextResponse.json({ ok: false, error: 'A positive amount and reason are required.' }, { status: 400 })
+    if (!Number.isFinite(amount) || amount <= 0 || !reason || !type) {
+      return NextResponse.json({ ok: false, error: 'A positive amount, reason, and valid transaction type are required.' }, { status: 400 })
     }
 
-    const entry = { id: `PC-${Date.now().toString().slice(-8)}`, date, amount, reason, createdAt: new Date() }
+    const entry = { id: `PC-${Date.now().toString().slice(-8)}`, date, amount, reason, type, createdAt: new Date() }
     await (await getCollection<any>('petty_cash')).insertOne(entry)
     return NextResponse.json({ ok: true, pettyCash: entry })
   } catch (error) {

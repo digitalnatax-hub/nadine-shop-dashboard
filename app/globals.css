@@ -79,6 +79,9 @@ body { background:linear-gradient(135deg,#f8f9fa 0%,#eef5f5 100%); }
 .document-grid span,.document-grid strong { display:block; }
 .document-grid span { color:var(--muted); font-size:11px; }
 .document-grid strong { margin-top:7px; font-size:16px; }
+.statement-section { margin-top:22px; }
+.statement-section h3 { margin:0 0 10px; font-size:14px; }
+.statement-section .document-grid { margin-top:0; }
 @media(max-width:720px){ .report-controls { align-items:stretch; flex-direction:column; } .report-controls .primary-btn { margin-left:0; } .report-kpis { grid-template-columns:1fr; } .document-grid { grid-template-columns:1fr 1fr; } .stock-check-row .badge { display:none; } }
 @media print{ body *{visibility:hidden!important}.receipt,.receipt *,.financial-document,.financial-document *{visibility:visible!important}.receipt,.financial-document{position:absolute;left:0;top:0;width:100%;border:0;box-shadow:none}.financial-document{padding:0}.report-controls,.report-kpis,.table-panel,.page-heading,.topbar,.sidebar{display:none!important} }
 .payment-choice { display:flex; flex-wrap:wrap; gap:12px; margin:0 0 14px; padding:12px; border:1px solid var(--border); border-radius:9px; }

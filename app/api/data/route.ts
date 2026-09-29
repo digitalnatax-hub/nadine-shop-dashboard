@@ -55,6 +55,7 @@ export async function GET() {
         date: entry.date,
         amount: Number(entry.amount ?? 0),
         reason: entry.reason,
+        type: entry.type ?? 'transfer',
       })),
     })
   } catch (error) {
