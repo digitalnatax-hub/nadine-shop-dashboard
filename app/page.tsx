@@ -981,15 +981,19 @@ function BrowseControls({
 }
 
 function SalesPage({ sales, products, setShowSale, setReceipt, setEditingSale, deleteSale, search, setSearch }: any) {
-  const visibleSales = sales.filter((entry: Sale) => entry.id.toLowerCase().includes(search.toLowerCase()))
+  const searchTerm = search.trim().toLowerCase()
+  const visibleSales = sales.filter((entry: Sale) =>
+    entry.id.toLowerCase().includes(searchTerm)
+    || entry.items.some((item) => item.name.toLowerCase().includes(searchTerm)),
+  )
 
   return (
     <>
       <Header title="Sales history" subtitle="Review transactions, revenue and profit from your shop." action="New sale" onAction={() => setShowSale(true)} />
       <div className="toolbar">
-        <div className="search-box">
+        <div className="search-box sales-search-box">
           <Search />
-          <input placeholder="Search receipts..." value={search} onChange={(event) => setSearch(event.target.value)} />
+          <input aria-label="Search sales by receipt or item" placeholder="Search receipts or items..." value={search} onChange={(event) => setSearch(event.target.value)} />
         </div>
         <select>
           <option>All dates</option>
@@ -997,8 +1001,9 @@ function SalesPage({ sales, products, setShowSale, setReceipt, setEditingSale, d
         </select>
       </div>
 
-      <div className="panel table-panel">
-        <table>
+      <div className="panel table-panel sales-history-panel">
+        <div className={`sales-history-scroll${visibleSales.length > 4 ? ' is-scrollable' : ''}`}>
+          <table>
           <thead>
             <tr>
               <th>Receipt</th>
@@ -1017,7 +1022,16 @@ function SalesPage({ sales, products, setShowSale, setReceipt, setEditingSale, d
                   <strong>{entry.id}</strong>
                 </td>
                 <td>{entry.date}</td>
-                <td>{entry.items.reduce((sum, item) => sum + item.qty, 0)} items</td>
+                <td>
+                  <ul className="sale-item-list">
+                    {entry.items.map((item, index) => (
+                      <li key={`${item.productId ?? item.name}-${index}`}>
+                        <span>{item.name}</span>
+                        <small>{formatQuantity(item.qty, item.unit)}</small>
+                      </li>
+                    ))}
+                  </ul>
+                </td>
                 <td>
                   <strong>{money(entry.total)}</strong>
                 </td>
@@ -1039,7 +1053,8 @@ function SalesPage({ sales, products, setShowSale, setReceipt, setEditingSale, d
               </tr>
             ))}
           </tbody>
-        </table>
+          </table>
+        </div>
       </div>
     </>
   )

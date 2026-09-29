@@ -194,3 +194,19 @@ body { background:linear-gradient(135deg,#f8f9fa 0%,#eef5f5 100%); }
 .debt-row .settle-debt { align-self:flex-end; }
 @media(max-width:720px){ .debt-row { align-items:flex-start; gap:8px; } .debt-avatar { flex:none; } .debt-info { min-width:0; } .debt-amount { min-width:96px; } .debt-payment-progress { padding:8px; } .debt-payment-meta { align-items:flex-start; flex-direction:column; gap:2px; } .debt-payment-meta > strong { text-align:left; } }
 .petty-cash-ledger.side-scroll-list { max-height:245px; overflow-y:scroll; }
+.sales-search-box { min-height:44px; padding:0 13px; border-color:#d3e2e4; box-shadow:0 3px 10px rgba(10,72,111,.05); transition:border-color .18s,box-shadow .18s,background .18s; }
+.sales-search-box:focus-within { border-color:var(--teal); background:#fbfefd; box-shadow:0 0 0 3px rgba(13,139,136,.13),0 5px 14px rgba(10,72,111,.07); }
+.sales-search-box svg { width:17px; height:17px; color:var(--teal); }
+.sales-search-box input { font-size:13px; }
+.sales-search-box input::placeholder { color:#899ba3; }
+.sales-history-panel { overflow:hidden; }
+.sales-history-scroll { overflow-x:auto; }
+.sales-history-scroll.is-scrollable { max-height:360px; overflow-y:scroll; overscroll-behavior-y:contain; scrollbar-width:thin; scrollbar-color:#9bb8bd #eef3f4; }
+.sales-history-scroll.is-scrollable::-webkit-scrollbar { width:8px; }
+.sales-history-scroll.is-scrollable::-webkit-scrollbar-track { background:#eef3f4; }
+.sales-history-scroll.is-scrollable::-webkit-scrollbar-thumb { background:#9bb8bd; border:2px solid #eef3f4; border-radius:8px; }
+.sale-item-list { display:flex; flex-direction:column; gap:5px; margin:0; padding:0; list-style:none; }
+.sale-item-list li { display:flex; align-items:baseline; justify-content:space-between; gap:12px; min-width:140px; }
+.sale-item-list li span { min-width:0; overflow-wrap:anywhere; color:var(--foreground); font-size:12px; font-weight:700; }
+.sale-item-list li small { flex:none; color:var(--muted); font-size:10px; white-space:nowrap; }
+@media(max-width:720px){ .sales-history-scroll.is-scrollable { max-height:340px; } .sale-item-list li { min-width:120px; } }
