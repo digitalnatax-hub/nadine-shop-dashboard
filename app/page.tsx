@@ -1079,46 +1079,48 @@ function Inventory({ products, setShowProduct, setEditingProduct, deleteProduct,
         </select>
       </div>
 
-      <div className="inventory-grid">
-        {visibleProducts.map((product: Product) => (
-          <div className="inventory-card" key={product.id}>
-            <div className="inventory-card-top">
-              <div className="product-icon large">
-                <Package />
+      <div className="inventory-scroll">
+        <div className="inventory-grid">
+          {visibleProducts.map((product: Product) => (
+            <div className="inventory-card" key={product.id}>
+              <div className="inventory-card-top">
+                <div className="product-icon large">
+                  <Package />
+                </div>
+                <span className={product.stock <= product.min ? 'badge warning' : 'badge success'}>
+                  {product.stock <= product.min ? 'Low stock' : 'In stock'}
+                </span>
               </div>
-              <span className={product.stock <= product.min ? 'badge warning' : 'badge success'}>
-                {product.stock <= product.min ? 'Low stock' : 'In stock'}
-              </span>
+              <h3>{product.name}</h3>
+              <p>
+                {product.category} · per {product.unit}
+              </p>
+              <div className="stock-number">
+                <strong>{product.stock}</strong>
+                <span>{product.unit} available</span>
+              </div>
+              <div className="stock-bar">
+                <i className={product.stock <= product.min ? 'low' : ''} style={{ width: `${Math.min(100, (product.stock / Math.max(product.min * 4, 1)) * 100)}%` }} />
+              </div>
+              <div className="price-row">
+                <span>
+                  Buy <strong>{money(product.buy)}</strong>
+                </span>
+                <span>
+                  Sell <strong>{money(product.sell)}</strong>
+                </span>
+              </div>
+              <div className="inventory-actions">
+                <button className="outline-btn" onClick={() => setEditingProduct(product)}>
+                  <Pencil /> Edit
+                </button>
+                <button className="danger-btn" onClick={() => void deleteProduct(product)}>
+                  <Trash2 /> Delete
+                </button>
+              </div>
             </div>
-            <h3>{product.name}</h3>
-            <p>
-              {product.category} · per {product.unit}
-            </p>
-            <div className="stock-number">
-              <strong>{product.stock}</strong>
-              <span>{product.unit} available</span>
-            </div>
-            <div className="stock-bar">
-              <i className={product.stock <= product.min ? 'low' : ''} style={{ width: `${Math.min(100, (product.stock / Math.max(product.min * 4, 1)) * 100)}%` }} />
-            </div>
-            <div className="price-row">
-              <span>
-                Buy <strong>{money(product.buy)}</strong>
-              </span>
-              <span>
-                Sell <strong>{money(product.sell)}</strong>
-              </span>
-            </div>
-            <div className="inventory-actions">
-              <button className="outline-btn" onClick={() => setEditingProduct(product)}>
-                <Pencil /> Edit
-              </button>
-              <button className="danger-btn" onClick={() => void deleteProduct(product)}>
-                <Trash2 /> Delete
-              </button>
-            </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
     </>
   )
