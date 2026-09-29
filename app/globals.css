@@ -194,6 +194,51 @@ body { background:linear-gradient(135deg,#f8f9fa 0%,#eef5f5 100%); }
 .debt-row .settle-debt { align-self:flex-end; }
 @media(max-width:720px){ .debt-row { align-items:flex-start; gap:8px; } .debt-avatar { flex:none; } .debt-info { min-width:0; } .debt-amount { min-width:96px; } .debt-payment-progress { padding:8px; } .debt-payment-meta { align-items:flex-start; flex-direction:column; gap:2px; } .debt-payment-meta > strong { text-align:left; } }
 .petty-cash-ledger.side-scroll-list { max-height:245px; overflow-y:scroll; }
+.product-performance-panel { padding:0; overflow:hidden; }
+.performance-header { display:flex; align-items:center; justify-content:space-between; gap:22px; padding:24px 26px 20px; border-bottom:1px solid #e8eef0; background:linear-gradient(110deg,#fff 0%,#f4faf9 100%); }
+.performance-header h2 { margin:7px 0 4px; color:var(--foreground); font-size:20px; }
+.performance-header p { margin:0; color:var(--muted); font-size:12px; }
+.performance-total { display:flex; flex-direction:column; align-items:flex-end; gap:5px; }
+.performance-total span { color:var(--muted); font-size:10px; font-weight:800; text-transform:uppercase; }
+.performance-total strong { color:var(--teal); font-size:24px; font-variant-numeric:tabular-nums; }
+.performance-controls { display:flex; align-items:center; justify-content:space-between; gap:14px; padding:15px 26px; }
+.performance-search { display:flex; align-items:center; gap:10px; width:min(390px,100%); height:42px; padding:0 12px; border:1px solid #d4e2e3; border-radius:8px; color:var(--teal); background:#fff; box-shadow:0 3px 10px rgba(10,72,111,.04); transition:border-color .18s,box-shadow .18s; }
+.performance-search:focus-within { border-color:var(--teal); box-shadow:0 0 0 3px rgba(13,139,136,.13); }
+.performance-search > svg { width:17px; height:17px; flex:none; }
+.performance-search input { width:100%; min-width:0; height:100%; border:0; outline:0; color:var(--foreground); background:transparent; font-size:13px; }
+.performance-search input::placeholder { color:#899ba3; }
+.performance-search button { display:grid; place-items:center; flex:none; width:27px; height:27px; padding:0; border:0; border-radius:6px; color:var(--muted); background:transparent; }
+.performance-search button:hover { color:var(--primary); background:#edf5f5; }
+.performance-search button svg { width:15px; height:15px; }
+.performance-count { color:var(--muted); font-size:11px; font-weight:700; white-space:nowrap; }
+.product-performance-list { padding:0 26px; }
+.product-performance-list.is-scrollable { max-height:276px; overflow-y:scroll; overscroll-behavior-y:contain; scrollbar-width:thin; scrollbar-color:#9bb8bd #eef3f4; }
+.product-performance-list::-webkit-scrollbar { width:8px; }
+.product-performance-list::-webkit-scrollbar-track { background:#eef3f4; border-radius:8px; }
+.product-performance-list::-webkit-scrollbar-thumb { background:#9bb8bd; border:2px solid #eef3f4; border-radius:8px; }
+.performance-row { display:grid; grid-template-columns:minmax(180px,1fr) minmax(230px,.9fr) minmax(170px,.65fr); align-items:center; gap:20px; min-height:88px; padding:14px 0; border-bottom:1px solid #edf1f3; }
+.performance-row:last-child { border-bottom:0; }
+.performance-identity { display:flex; align-items:center; gap:12px; min-width:0; }
+.performance-rank { display:grid; place-items:center; width:34px; height:34px; flex:none; border-radius:9px; color:var(--teal); background:#e8f5f3; font-size:11px; font-weight:800; font-variant-numeric:tabular-nums; }
+.performance-identity > div { min-width:0; }
+.performance-identity strong,.performance-identity small { display:block; }
+.performance-identity strong { overflow:hidden; color:var(--foreground); font-size:13px; text-overflow:ellipsis; white-space:nowrap; }
+.performance-identity small { margin-top:5px; color:var(--muted); font-size:10px; }
+.performance-financials { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.performance-financials div { min-width:0; }
+.performance-financials span,.performance-financials strong { display:block; }
+.performance-financials span,.performance-profit-heading span { color:var(--muted); font-size:10px; font-weight:700; }
+.performance-financials strong { margin-top:5px; overflow:hidden; color:var(--foreground); font-size:12px; font-variant-numeric:tabular-nums; text-overflow:ellipsis; white-space:nowrap; }
+.performance-profit-heading { display:flex; align-items:baseline; justify-content:space-between; gap:8px; }
+.performance-profit-heading strong { font-size:13px; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.performance-track { height:6px; margin:8px 0 4px; overflow:hidden; border-radius:8px; background:#edf2f3; }
+.performance-track i { display:block; height:100%; border-radius:inherit; background:linear-gradient(90deg,var(--teal),#36b29e); }
+.performance-profit > small { color:var(--muted); font-size:9px; }
+.performance-empty { min-height:190px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; color:var(--muted); text-align:center; }
+.performance-empty > svg { width:22px; height:22px; color:#8baeb4; }
+.performance-empty strong { color:var(--foreground); font-size:13px; }
+.performance-empty span { font-size:11px; }
+@media(max-width:720px){ .performance-header { align-items:flex-start; flex-direction:column; gap:14px; padding:21px 18px 17px; } .performance-total { align-items:flex-start; } .performance-total strong { font-size:21px; } .performance-controls { align-items:stretch; flex-direction:column; gap:9px; padding:13px 18px; } .performance-search { width:100%; } .performance-count { align-self:flex-end; } .product-performance-list { padding:0 18px; } .product-performance-list.is-scrollable { max-height:520px; } .performance-row { grid-template-columns:minmax(0,1fr); gap:12px; padding:15px 0; } .performance-financials { gap:14px; } }
 .inventory-scroll { max-height:700px; overflow-y:auto; overscroll-behavior-y:contain; padding-right:6px; scrollbar-width:thin; scrollbar-color:#9bb8bd #eef3f4; }
 .inventory-scroll::-webkit-scrollbar { width:8px; }
 .inventory-scroll::-webkit-scrollbar-track { background:#eef3f4; border-radius:8px; }

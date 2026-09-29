@@ -1313,6 +1313,7 @@ function DebtRow({ entry, onPayDebt }: { entry: Debt; onPayDebt: (entry: Debt) =
 function Reports({ sales, products, pettyCash, totals }: any) {
   const [range, setRange] = useState<'day' | 'week' | 'month'>('day')
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0, 10))
+  const [productSearch, setProductSearch] = useState('')
 
   const report = useMemo(() => {
     const anchor = new Date(`${selectedDate}T12:00:00`)
@@ -1329,6 +1330,25 @@ function Reports({ sales, products, pettyCash, totals }: any) {
     const profit = salesProfit - pettyTotal
     return { entries, revenue, vat, pettyTotal, profit, cost, loss: Math.max(0, -profit), startDate }
   }, [range, selectedDate, sales, pettyCash])
+
+  const productPerformance = useMemo(() => {
+    const items = report.entries.flatMap((entry: Sale) => entry.items)
+    return products.map((product: Product) => {
+      const soldItems = items.filter((item: Sale['items'][number]) =>
+        item.productId === product.id || (!item.productId && item.name === product.name),
+      )
+      const revenue = soldItems.reduce((sum: number, item: Sale['items'][number]) => sum + Number(item.price || 0) * Number(item.qty || 0), 0)
+      const cost = soldItems.reduce((sum: number, item: Sale['items'][number]) => sum + Number(item.buy || 0) * Number(item.qty || 0), 0)
+      const quantity = soldItems.reduce((sum: number, item: Sale['items'][number]) => sum + Number(item.qty || 0), 0)
+      const profit = soldItems.reduce((sum: number, item: Sale['items'][number]) => sum + (Number(item.price || 0) - Number(item.buy || 0)) * Number(item.qty || 0), 0)
+      return { product, revenue, cost, quantity, profit, margin: revenue > 0 ? Math.round((profit / revenue) * 100) : 0 }
+    }).sort((left: any, right: any) => right.profit - left.profit)
+  }, [products, report.entries])
+  const normalizedProductSearch = productSearch.trim().toLowerCase()
+  const visibleProductPerformance = productPerformance.filter(({ product }: { product: Product }) =>
+    product.name.toLowerCase().includes(normalizedProductSearch),
+  )
+  const totalProductProfit = productPerformance.reduce((sum: number, entry: any) => sum + entry.profit, 0)
 
   return (
     <>
@@ -1382,48 +1402,55 @@ function Reports({ sales, products, pettyCash, totals }: any) {
         </div>
       </div>
 
-      <div className="panel table-panel">
-        <div className="panel-head">
+      <section className="panel product-performance-panel">
+        <div className="performance-header">
           <div>
+            <span className="eyebrow">PRODUCT ANALYSIS</span>
             <h2>Product performance</h2>
             <p>Profit contribution by product</p>
           </div>
-          <select>
-            <option>This month</option>
-            <option>This week</option>
-          </select>
+          <div className="performance-total">
+            <span>Profit in selected period</span>
+            <strong className={totalProductProfit >= 0 ? 'green-text' : 'negative'}>{money(totalProductProfit)}</strong>
+          </div>
         </div>
-
-        <table>
-          <thead>
-            <tr>
-              <th>Product</th>
-              <th>Revenue</th>
-              <th>Cost</th>
-              <th>Profit</th>
-              <th>Margin</th>
-            </tr>
-          </thead>
-          <tbody>
-            {products.map((product: Product) => (
-              <tr key={product.id}>
-                <td>
-                  <strong>{product.name}</strong>
-                </td>
-                <td>{money(report.entries.flatMap((entry: Sale) => entry.items).filter((item: Sale['items'][number]) => item.name === product.name).reduce((sum: number, item: Sale['items'][number]) => sum + item.price * item.qty, 0))}</td>
-                <td>{money(report.entries.flatMap((entry: Sale) => entry.items).filter((item: Sale['items'][number]) => item.name === product.name).reduce((sum: number, item: Sale['items'][number]) => sum + item.buy * item.qty, 0))}</td>
-                <td className="green-text">+{money(report.entries.flatMap((entry: Sale) => entry.items).filter((item: Sale['items'][number]) => item.name === product.name).reduce((sum: number, item: Sale['items'][number]) => sum + (item.price - item.buy) * item.qty, 0))}</td>
-                <td>
-                  <span className="margin-bar">
-                    <i style={{ width: `${Math.max(0, Math.min(100, ((product.sell - product.buy) / Math.max(product.sell, 1)) * 100))}%` }} />
-                  </span>
-                  {Math.round(((product.sell - product.buy) / Math.max(product.sell, 1)) * 100)}%
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+        <div className="performance-controls">
+          <label className="performance-search">
+            <Search />
+            <input aria-label="Search product performance" placeholder="Search products..." value={productSearch} onChange={(event) => setProductSearch(event.target.value)} />
+            {productSearch && <button type="button" aria-label="Clear product search" onClick={() => setProductSearch('')}><X /></button>}
+          </label>
+          <span className="performance-count">{visibleProductPerformance.length} of {products.length} products</span>
+        </div>
+        <div className={`product-performance-list${visibleProductPerformance.length > 3 ? ' is-scrollable' : ''}`}>
+          {visibleProductPerformance.length ? visibleProductPerformance.map((entry: any, index: number) => (
+            <article className="performance-row" key={entry.product.id}>
+              <div className="performance-identity">
+                <span className="performance-rank">{String(index + 1).padStart(2, '0')}</span>
+                <div>
+                  <strong>{entry.product.name}</strong>
+                  <small>{formatQuantity(entry.quantity, entry.product.unit)} sold</small>
+                </div>
+              </div>
+              <div className="performance-financials">
+                <div><span>Revenue</span><strong>{money(entry.revenue)}</strong></div>
+                <div><span>Cost</span><strong>{money(entry.cost)}</strong></div>
+              </div>
+              <div className="performance-profit">
+                <div className="performance-profit-heading"><span>Profit</span><strong className={entry.profit >= 0 ? 'green-text' : 'negative'}>{money(entry.profit)}</strong></div>
+                <div className="performance-track"><i style={{ width: `${Math.max(0, Math.min(100, entry.margin))}%` }} /></div>
+                <small>{entry.margin}% margin</small>
+              </div>
+            </article>
+          )) : (
+            <div className="performance-empty">
+              <Search />
+              <strong>{productPerformance.length ? 'No matching products' : 'No product sales in this period'}</strong>
+              <span>{productPerformance.length ? 'Try another product name.' : 'Product contribution will appear after a sale is recorded.'}</span>
+            </div>
+          )}
+        </div>
+      </section>
     </>
   )
 }
