@@ -982,9 +982,16 @@ function BrowseControls({
 
 function SalesPage({ sales, products, setShowSale, setReceipt, setEditingSale, deleteSale, search, setSearch }: any) {
   const searchTerm = search.trim().toLowerCase()
+  const getItemName = (item: Sale['items'][number]) => {
+    const storedName = item.name?.trim()
+    if (storedName) return storedName
+    const productId = Number(item.productId)
+    return products.find((product: Product) => product.id === productId)?.name
+      ?? (Number.isFinite(productId) ? `Product #${productId}` : 'Unnamed item')
+  }
   const visibleSales = sales.filter((entry: Sale) =>
     entry.id.toLowerCase().includes(searchTerm)
-    || entry.items.some((item) => item.name.toLowerCase().includes(searchTerm)),
+    || entry.items.some((item) => getItemName(item).toLowerCase().includes(searchTerm)),
   )
 
   return (
@@ -1026,7 +1033,7 @@ function SalesPage({ sales, products, setShowSale, setReceipt, setEditingSale, d
                   <ul className="sale-item-list">
                     {entry.items.map((item, index) => (
                       <li key={`${item.productId ?? item.name}-${index}`}>
-                        <span>{item.name}</span>
+                        <span>{getItemName(item)}</span>
                         <small>{formatQuantity(item.qty, item.unit)}</small>
                       </li>
                     ))}
