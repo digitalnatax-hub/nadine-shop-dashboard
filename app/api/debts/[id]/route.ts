@@ -1,6 +1,26 @@
 import { NextResponse } from 'next/server'
 import { ensureDatabaseSchema, getCollection } from '@/lib/db'
 
+export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    await ensureDatabaseSchema()
+    const debtId = Number((await params).id)
+    const debts = await getCollection<any>('debts')
+    const result = await debts.deleteOne({
+      id: debtId,
+      kind: 'customer',
+      $or: [{ status: 'paid' }, { amount: { $lte: 0 } }],
+    })
+    if (!result.deletedCount) {
+      return NextResponse.json({ ok: false, error: 'Only fully paid customer debts can be deleted.' }, { status: 409 })
+    }
+    return NextResponse.json({ ok: true })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unable to delete debt record.'
+    return NextResponse.json({ ok: false, error: message }, { status: 503 })
+  }
+}
+
 export async function PATCH(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   let debtId: number | undefined
   let saleId: string | undefined

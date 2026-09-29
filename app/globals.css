@@ -69,6 +69,7 @@ body { background:linear-gradient(135deg,#f8f9fa 0%,#eef5f5 100%); }
 .report-controls select,.report-controls input { height:40px; min-width:155px; border:1px solid var(--border); border-radius:8px; padding:0 10px; color:var(--foreground); background:#fff; }
 .report-controls .primary-btn { margin-left:auto; }
 .financial-document { padding:24px; margin-bottom:22px; }
+.report-kpis { grid-template-columns:repeat(4,1fr); }
 .document-head { display:flex; justify-content:space-between; align-items:flex-start; border-bottom:1px solid var(--border); padding-bottom:18px; }
 .document-head h2 { margin:7px 0 4px; font-size:20px; }
 .document-head p { color:var(--muted); margin:0; font-size:12px; }
@@ -78,7 +79,7 @@ body { background:linear-gradient(135deg,#f8f9fa 0%,#eef5f5 100%); }
 .document-grid span,.document-grid strong { display:block; }
 .document-grid span { color:var(--muted); font-size:11px; }
 .document-grid strong { margin-top:7px; font-size:16px; }
-@media(max-width:720px){ .report-controls { align-items:stretch; flex-direction:column; } .report-controls .primary-btn { margin-left:0; } .document-grid { grid-template-columns:1fr 1fr; } .stock-check-row .badge { display:none; } }
+@media(max-width:720px){ .report-controls { align-items:stretch; flex-direction:column; } .report-controls .primary-btn { margin-left:0; } .report-kpis { grid-template-columns:1fr; } .document-grid { grid-template-columns:1fr 1fr; } .stock-check-row .badge { display:none; } }
 @media print{ body *{visibility:hidden!important}.receipt,.receipt *,.financial-document,.financial-document *{visibility:visible!important}.receipt,.financial-document{position:absolute;left:0;top:0;width:100%;border:0;box-shadow:none}.financial-document{padding:0}.report-controls,.report-kpis,.table-panel,.page-heading,.topbar,.sidebar{display:none!important} }
 .payment-choice { display:flex; flex-wrap:wrap; gap:12px; margin:0 0 14px; padding:12px; border:1px solid var(--border); border-radius:9px; }
 .payment-choice legend { padding:0 5px; color:var(--muted); font-size:11px; font-weight:800; }

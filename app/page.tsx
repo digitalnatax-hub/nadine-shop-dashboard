@@ -156,7 +156,8 @@ export default function Page() {
       sales: sales.reduce((sum, entry) => sum + Number(entry.total), 0),
       profit: sales.reduce((sum, entry) => sum + Number(entry.profit), 0),
       todaySales: todaySales.reduce((sum, entry) => sum + (entry.vat ? Number(entry.total) / 1.18 : Number(entry.total)), 0),
-      todayProfit: todaySales.reduce((sum, entry) => sum + Number(entry.profit), 0) - todayPettyTotal,
+      todayGrossProfit: todaySales.reduce((sum, entry) => sum + Number(entry.profit), 0),
+      todayNetProfit: todaySales.reduce((sum, entry) => sum + Number(entry.profit), 0) - todayPettyTotal,
       todayVat,
       todayPettyTotal,
       owed: debts.filter((entry) => entry.kind === 'customer').reduce((sum, entry) => sum + Number(entry.amount), 0),
@@ -337,6 +338,17 @@ export default function Page() {
     }
     await loadData()
     setPayingDebt(null)
+  }
+
+  const deleteDebt = async (debt: Debt) => {
+    if (!window.confirm(`Delete ${debt.name} from customer debtors? This cannot be undone.`)) return
+    const response = await fetch(`/api/debts/${debt.id}`, { method: 'DELETE' })
+    const payload = await response.json()
+    if (!response.ok || !payload.ok) {
+      window.alert(payload.error ?? 'Unable to delete debt record.')
+      return
+    }
+    setDebts((current) => current.filter((entry) => entry.id !== debt.id))
   }
 
   const createProduct = async (input: { name: string; category: string; stock: number; unit: string; buy: number; sell: number; min: number }) => {
@@ -610,7 +622,7 @@ export default function Page() {
           {page === 'Inventory' && (
             <Inventory products={products} setShowProduct={setShowProduct} setEditingProduct={setEditingProduct} deleteProduct={deleteProduct} search={search} setSearch={setSearch} />
           )}
-          {page === 'Finances' && <FinancePage debts={debts} pettyCash={pettyCash} setShowDebt={setShowDebt} setShowPettyCash={() => setShowPettyCash(true)} onPayDebt={setPayingDebt} />}
+          {page === 'Finances' && <FinancePage debts={debts} pettyCash={pettyCash} setShowDebt={setShowDebt} setShowPettyCash={() => setShowPettyCash(true)} onPayDebt={setPayingDebt} onDeleteDebt={deleteDebt} />}
           {page === 'Reports' && <Reports products={products} sales={sales} pettyCash={pettyCash} totals={totals} />}
         </main>
       </div>
@@ -800,7 +812,8 @@ function Dashboard({ totals, lowStock, sales, products, setShowSale }: any) {
 
   const cards = [
     { label: "Today's sales (excl. VAT)", value: money(totals.todaySales || 0), color: 'teal', icon: ShoppingCart, change: `${sales.length} sales` },
-    { label: "Today's profit", value: money(totals.todayProfit || 0), color: 'green', icon: TrendingUp, change: 'After petty cash' },
+    { label: "Today's gross profit", value: money(totals.todayGrossProfit || 0), color: 'teal', icon: TrendingUp, change: 'Before petty cash' },
+    { label: "Today's net profit", value: money(totals.todayNetProfit || 0), color: 'green', icon: TrendingUp, change: 'After petty cash' },
     { label: 'VAT payable', value: money(totals.todayVat || 0), color: 'amber', icon: CircleDollarSign, change: 'From included VAT' },
     { label: 'Customers owe', value: money(totals.owed), color: 'amber', icon: Users, change: 'Open customer debts' },
     { label: 'Low stock items', value: lowStock.length, color: 'red', icon: AlertTriangle, change: 'Needs attention' },
@@ -1171,7 +1184,7 @@ function DebtPaymentModal({ debt, close, onPay }: { debt: Debt; close: () => voi
   )
 }
 
-function FinancePage({ debts, pettyCash, setShowDebt, setShowPettyCash, onPayDebt }: any) {
+function FinancePage({ debts, pettyCash, setShowDebt, setShowPettyCash, onPayDebt, onDeleteDebt }: any) {
   const customers = debts.filter((item: Debt) => item.kind === 'customer')
   const suppliers = debts.filter((item: Debt) => item.kind === 'supplier')
   const [customerSearch, setCustomerSearch] = useState('')
@@ -1212,7 +1225,7 @@ function FinancePage({ debts, pettyCash, setShowDebt, setShowPettyCash, onPayDeb
           <BrowseControls count={customers.length} query={customerSearch} onQueryChange={setCustomerSearch} scrollRef={customerListRef} placeholder="Search customers..." />
           <div className={`debt-list ${customers.length > 3 ? 'side-scroll-list' : ''}`} ref={customerListRef}>
           {visibleCustomers.length ? visibleCustomers.map((entry: Debt) => (
-            <DebtRow key={entry.id} entry={entry} onPayDebt={onPayDebt} />
+            <DebtRow key={entry.id} entry={entry} onPayDebt={onPayDebt} onDeleteDebt={onDeleteDebt} />
           )) : <div className="empty-state">{customers.length ? 'No matching customers.' : 'No customer debts recorded.'}</div>}
           </div>
         </div>
@@ -1264,7 +1277,7 @@ function FinancePage({ debts, pettyCash, setShowDebt, setShowPettyCash, onPayDeb
   )
 }
 
-function DebtRow({ entry, onPayDebt }: { entry: Debt; onPayDebt: (entry: Debt) => void }) {
+function DebtRow({ entry, onPayDebt, onDeleteDebt }: { entry: Debt; onPayDebt: (entry: Debt) => void; onDeleteDebt?: (entry: Debt) => void }) {
   const paidAmount = Math.max(0, Number(entry.paidAmount ?? 0))
   const remainingAmount = Math.max(0, Number(entry.amount ?? 0))
   const originalAmount = Math.max(Number(entry.original ?? 0), paidAmount + remainingAmount, 1)
@@ -1303,7 +1316,7 @@ function DebtRow({ entry, onPayDebt }: { entry: Debt; onPayDebt: (entry: Debt) =
         {isCustomer ? <>
           <span className="debt-remaining-label">{isCleared ? 'Remaining' : 'Remaining to pay'}</span>
           <strong className={`debt-remaining-value ${isCleared ? 'is-cleared' : ''}`}>{money(remainingAmount)}</strong>
-          {isCleared ? <span className="debt-cleared-note"><Check /> Paid in full</span> : <button className="outline-btn settle-debt" disabled={entry.status === 'settling'} onClick={() => onPayDebt(entry)}>{entry.status === 'settling' ? 'Processing' : 'Pay now'}</button>}
+          {isCleared ? <><span className="debt-cleared-note"><Check /> Paid in full</span><button className="danger-btn settle-debt" onClick={() => onDeleteDebt?.(entry)}><Trash2 /> Delete</button></> : <button className="outline-btn settle-debt" disabled={entry.status === 'settling'} onClick={() => onPayDebt(entry)}>{entry.status === 'settling' ? 'Processing' : 'Pay now'}</button>}
         </> : <strong>{money(entry.amount)}</strong>}
       </div>
     </div>
@@ -1327,8 +1340,9 @@ function Reports({ sales, products, pettyCash, totals }: any) {
     const salesProfit = entries.reduce((sum: number, entry: Sale) => sum + Number(entry.profit || 0), 0)
     const cost = entries.flatMap((entry: Sale) => entry.items).reduce((sum: number, item: Sale['items'][number]) => sum + Number(item.buy || 0) * Number(item.qty || 0), 0)
     const pettyTotal = pettyCash.filter((entry: PettyCash) => entry.date >= startDate && entry.date <= selectedDate).reduce((sum: number, entry: PettyCash) => sum + Number(entry.amount || 0), 0)
-    const profit = salesProfit - pettyTotal
-    return { entries, revenue, vat, pettyTotal, profit, cost, loss: Math.max(0, -profit), startDate }
+    const grossProfit = salesProfit
+    const netProfit = grossProfit - pettyTotal
+    return { entries, revenue, vat, pettyTotal, grossProfit, netProfit, cost, loss: Math.max(0, -netProfit), startDate }
   }, [range, selectedDate, sales, pettyCash])
 
   const productPerformance = useMemo(() => {
@@ -1380,8 +1394,13 @@ function Reports({ sales, products, pettyCash, totals }: any) {
         </div>
         <div>
           <span>Gross profit</span>
-          <strong className={report.profit >= 0 ? 'green-text' : 'negative'}>{money(report.profit)}</strong>
-          <small>{report.profit >= 0 ? 'Net profit' : `Loss: ${money(report.loss)}`}</small>
+          <strong className={report.grossProfit >= 0 ? 'green-text' : 'negative'}>{money(report.grossProfit)}</strong>
+          <small>Sales profit before expenses</small>
+        </div>
+        <div>
+          <span>Net profit</span>
+          <strong className={report.netProfit >= 0 ? 'green-text' : 'negative'}>{money(report.netProfit)}</strong>
+          <small>{report.netProfit >= 0 ? 'After petty cash' : `Loss: ${money(report.loss)}`}</small>
         </div>
       </div>
 
@@ -1393,9 +1412,10 @@ function Reports({ sales, products, pettyCash, totals }: any) {
         <div className="document-grid">
           <div><span>Sales revenue</span><strong>{money(report.revenue)}</strong></div>
           <div><span>Cost of goods sold</span><strong>{money(report.cost)}</strong></div>
-          <div><span>Gross profit</span><strong className={report.profit >= 0 ? 'green-text' : 'negative'}>{money(report.profit)}</strong></div>
+          <div><span>Gross profit</span><strong className={report.grossProfit >= 0 ? 'green-text' : 'negative'}>{money(report.grossProfit)}</strong></div>
           <div><span>VAT payable</span><strong>{money(report.vat)}</strong></div>
           <div><span>Petty cash withdrawn</span><strong className="negative">−{money(report.pettyTotal)}</strong></div>
+          <div><span>Net profit</span><strong className={report.netProfit >= 0 ? 'green-text' : 'negative'}>{money(report.netProfit)}</strong></div>
           <div><span>Customer receivables</span><strong>{money(totals.owed)}</strong></div>
           <div><span>Supplier payables</span><strong>{money(totals.owe)}</strong></div>
           <div><span>Inventory at cost</span><strong>{money(products.reduce((sum: number, product: Product) => sum + product.stock * product.buy, 0))}</strong></div>
