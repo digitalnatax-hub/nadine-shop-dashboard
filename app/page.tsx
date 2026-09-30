@@ -50,6 +50,11 @@ type Sale = {
   profit: number
   vat: boolean
   creditDebtId?: number
+  vatAmount?: number
+  customer?: string
+  paymentStatus?: 'unpaid' | 'partial' | 'paid' | 'payment'
+  amountPaid?: number
+  customerBalance?: number
 }
 
 type Debt = {
@@ -72,7 +77,47 @@ type PettyCash = {
   date: string
   amount: number
   reason: string
-  type: 'expense' | 'transfer' | 'owner_drawing'
+  type: 'expense' | 'business_expense_payment' | 'other_expense' | 'other_income' | 'transfer' | 'owner_drawing' | 'owner_contribution' | 'supplier_payment' | 'customer_payment' | 'inventory_purchase_payment' | 'cash_in'
+  category?: string
+  vatAmount?: number
+  paymentMethod?: string
+  reference?: string
+  user?: string
+  runningBalance?: number
+}
+
+type InventoryPurchase = {
+  id: string
+  date: string
+  supplier: string
+  total: number
+  paidAmount: number
+  vatAmount: number
+  paymentMethod: string
+  items: { productId: number; name: string; qty: number; unit: string; unitCost: number }[]
+}
+
+type CashMovement = {
+  id: string
+  date: string
+  account: string
+  type: string
+  amount: number
+  reference: string
+}
+
+type BusinessExpense = {
+  id: string
+  date: string
+  category: string
+  description: string
+  supplier: string
+  amountExclVat: number
+  vatAmount: number
+  total: number
+  paidAmount: number
+  paymentStatus: 'paid' | 'partial' | 'unpaid'
+  paymentMethod: string
 }
 
 type CartItem = {
@@ -99,6 +144,9 @@ const formatQuantity = (value: number, unit: string) => {
   return `${rendered} ${unit}`
 }
 
+const getSaleVat = (sale: Sale) => Number(sale.vatAmount ?? (sale.vat ? Number(sale.total) - Number(sale.total) / 1.18 : 0))
+const getSaleRevenue = (sale: Sale) => Number(sale.total) - getSaleVat(sale)
+
 export default function Page() {
   const [loggedIn, setLoggedIn] = useState(false)
   const [username, setUsername] = useState('admin')
@@ -110,11 +158,17 @@ export default function Page() {
   const [sales, setSales] = useState<Sale[]>([])
   const [debts, setDebts] = useState<Debt[]>([])
   const [pettyCash, setPettyCash] = useState<PettyCash[]>([])
+  const [purchases, setPurchases] = useState<InventoryPurchase[]>([])
+  const [cashMovements, setCashMovements] = useState<CashMovement[]>([])
+  const [accountBalances, setAccountBalances] = useState({ cash: 0, bank: 0, mobile_money: 0, other: 0 })
+  const [businessExpenses, setBusinessExpenses] = useState<BusinessExpense[]>([])
   const [showProduct, setShowProduct] = useState(false)
   const [editingProduct, setEditingProduct] = useState<Product | null>(null)
   const [showSale, setShowSale] = useState(false)
   const [showDebt, setShowDebt] = useState(false)
   const [showPettyCash, setShowPettyCash] = useState(false)
+  const [showPurchase, setShowPurchase] = useState(false)
+  const [showExpense, setShowExpense] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [receipt, setReceipt] = useState<Sale | null>(null)
   const [editingSale, setEditingSale] = useState<Sale | null>(null)
@@ -138,6 +192,10 @@ export default function Page() {
     setSales(payload.sales ?? [])
     setDebts(payload.debts ?? [])
     setPettyCash(payload.pettyCash ?? [])
+    setPurchases(payload.purchases ?? [])
+    setCashMovements(payload.cashMovements ?? [])
+    setAccountBalances(payload.accountBalances ?? { cash: 0, bank: 0, mobile_money: 0, other: 0 })
+    setBusinessExpenses(payload.expenses ?? [])
   }
 
   useEffect(() => {
@@ -148,24 +206,62 @@ export default function Page() {
 
   const totals = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10)
-    const todaySales = sales.filter((entry) => entry.date === today)
+    const recognizedSales = sales.filter((entry) => entry.paymentStatus !== 'payment')
+    const todaySales = recognizedSales.filter((entry) => entry.date === today)
     const todayPettyCash = pettyCash.filter((entry) => entry.date === today)
-    const todayVat = todaySales.reduce((sum, entry) => sum + (entry.vat ? Number(entry.total) - Number(entry.total) / 1.18 : 0), 0)
-    const todayRevenue = todaySales.reduce((sum, entry) => sum + (entry.vat ? Number(entry.total) / 1.18 : Number(entry.total)), 0)
+    const todayVat = todaySales.reduce((sum, entry) => sum + getSaleVat(entry), 0)
+    const todayRevenue = todaySales.reduce((sum, entry) => sum + getSaleRevenue(entry), 0)
     const todayCost = todaySales.flatMap((entry) => entry.items ?? []).reduce((sum, item) => sum + Number(item.buy ?? 0) * Number(item.qty ?? 0), 0)
-    const todayOperatingExpenses = todayPettyCash.filter((entry) => entry.type === 'expense').reduce((sum, entry) => sum + Number(entry.amount), 0)
+    const todayOperatingExpenses = todayPettyCash.filter((entry) => entry.type === 'expense').reduce((sum, entry) => sum + Number(entry.amount) - Number(entry.vatAmount ?? 0), 0)
+    const todayOtherIncome = todayPettyCash.filter((entry) => entry.type === 'other_income').reduce((sum, entry) => sum + Number(entry.amount), 0)
+    const todayOtherExpenses = todayPettyCash.filter((entry) => entry.type === 'other_expense').reduce((sum, entry) => sum + Number(entry.amount) - Number(entry.vatAmount ?? 0), 0)
+    const todayExpenseRecords = businessExpenses.filter((entry) => entry.date === today)
+    const pettyCashBalance = pettyCash.reduce((balance, entry) => balance + (['owner_contribution', 'customer_payment', 'cash_in', 'other_income'].includes(entry.type) ? Number(entry.amount) : -Number(entry.amount)), 0)
+    const totalRevenue = recognizedSales.reduce((sum, entry) => sum + getSaleRevenue(entry), 0)
+    const totalCogs = recognizedSales.flatMap((entry) => entry.items ?? []).reduce((sum, item) => sum + Number(item.buy ?? 0) * Number(item.qty ?? 0), 0)
+    const totalOutputVat = recognizedSales.reduce((sum, entry) => sum + getSaleVat(entry), 0)
+    const totalOperatingExpenses = pettyCash.filter((entry) => entry.type === 'expense').reduce((sum, entry) => sum + Number(entry.amount) - Number(entry.vatAmount ?? 0), 0)
+      + businessExpenses.reduce((sum, entry) => sum + Number(entry.amountExclVat), 0)
+    const totalOtherIncome = pettyCash.filter((entry) => entry.type === 'other_income').reduce((sum, entry) => sum + Number(entry.amount), 0)
+    const totalOtherExpenses = pettyCash.filter((entry) => entry.type === 'other_expense').reduce((sum, entry) => sum + Number(entry.amount) - Number(entry.vatAmount ?? 0), 0)
+    const totalInputVat = pettyCash.filter((entry) => ['expense', 'other_expense'].includes(entry.type)).reduce((sum, entry) => sum + Number(entry.vatAmount ?? 0), 0)
+      + purchases.reduce((sum, purchase) => sum + Number(purchase.vatAmount ?? 0), 0)
+      + businessExpenses.reduce((sum, entry) => sum + Number(entry.vatAmount) * Math.min(1, Number(entry.paidAmount) / Math.max(Number(entry.total), 1)), 0)
+    const totalNetProfit = totalRevenue - totalCogs - totalOperatingExpenses + totalOtherIncome - totalOtherExpenses
+    const totalReceivables = debts.filter((entry) => entry.kind === 'customer').reduce((sum, entry) => sum + Number(entry.amount), 0)
+    const totalPayables = debts.filter((entry) => entry.kind === 'supplier').reduce((sum, entry) => sum + Number(entry.amount), 0)
+    const totalInventory = products.reduce((sum, product) => sum + Number(product.stock) * Number(product.buy), 0)
+    const knownAssets = accountBalances.cash + accountBalances.bank + accountBalances.mobile_money + accountBalances.other + pettyCashBalance + totalReceivables + totalInventory + Math.max(0, totalInputVat - totalOutputVat)
+    const knownLiabilities = totalPayables + Math.max(0, totalOutputVat - totalInputVat)
+    const knownEquity = pettyCash.filter((entry) => entry.type === 'owner_contribution').reduce((sum, entry) => sum + Number(entry.amount), 0) + totalNetProfit - pettyCash.filter((entry) => entry.type === 'owner_drawing').reduce((sum, entry) => sum + Number(entry.amount), 0)
 
     return {
-      sales: sales.reduce((sum, entry) => sum + Number(entry.total), 0),
-      profit: sales.reduce((sum, entry) => sum + Number(entry.profit), 0),
+      sales: totalRevenue,
+      profit: recognizedSales.reduce((sum, entry) => sum + Number(entry.profit), 0),
       todaySales: todayRevenue,
       todayGrossProfit: todayRevenue - todayCost,
-      todayNetProfit: todayRevenue - todayCost - todayOperatingExpenses,
+      todayNetProfit: todayRevenue - todayCost - todayOperatingExpenses - todayExpenseRecords.reduce((sum, entry) => sum + Number(entry.amountExclVat), 0) + todayOtherIncome - todayOtherExpenses,
       todayVat,
       owed: debts.filter((entry) => entry.kind === 'customer').reduce((sum, entry) => sum + Number(entry.amount), 0),
       owe: debts.filter((entry) => entry.kind === 'supplier').reduce((sum, entry) => sum + Number(entry.amount), 0),
+      inventory: products.reduce((sum, product) => sum + Number(product.stock) * Number(product.buy), 0),
+      pettyCashBalance: pettyCash.reduce((balance, entry) => balance + (['owner_contribution', 'customer_payment', 'cash_in', 'other_income'].includes(entry.type) ? Number(entry.amount) : -Number(entry.amount)), 0),
+      ownerDrawings: pettyCash.filter((entry) => entry.type === 'owner_drawing').reduce((sum, entry) => sum + Number(entry.amount), 0),
+      ownerContributions: pettyCash.filter((entry) => entry.type === 'owner_contribution').reduce((sum, entry) => sum + Number(entry.amount), 0),
+      cash: accountBalances.cash,
+      bank: accountBalances.bank,
+      mobileMoney: accountBalances.mobile_money,
+      otherAccounts: accountBalances.other,
+      outputVat: totalOutputVat,
+      inputVat: totalInputVat,
+      vatPayable: Math.max(0, totalOutputVat - totalInputVat),
+      vatCredit: Math.max(0, totalInputVat - totalOutputVat),
+      totalAssets: knownAssets,
+      totalLiabilities: knownLiabilities,
+      knownEquity,
+      balanceDifference: knownAssets - knownLiabilities - knownEquity,
     }
-  }, [sales, debts, pettyCash])
+  }, [sales, debts, pettyCash, products, purchases, accountBalances, businessExpenses])
 
   const lowStock = products.filter((product) => product.stock <= product.min)
 
@@ -245,7 +341,7 @@ export default function Page() {
     const response = await fetch('/api/sales', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(salePayload),
+      body: JSON.stringify({ ...salePayload, user: username }),
     })
 
     const payload = await response.json()
@@ -275,6 +371,7 @@ export default function Page() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        user: username,
         name: customer.name,
         phone: customer.phone,
         kind: 'customer',
@@ -285,18 +382,14 @@ export default function Page() {
     })
     const payload = await response.json()
     if (!response.ok || !payload.ok) throw new Error(payload.error ?? 'Credit sale could not be saved.')
-    setDebts((current) => [payload.debt, ...current])
-    setProducts((current) => current.map((product) => {
-      const cartItem = cart.find((entry) => entry.product.id === product.id)
-      return cartItem ? { ...product, stock: product.stock - cartItem.qty } : product
-    }))
+    await loadData()
     setCart([])
     setShowSale(false)
   }
 
   const deleteSale = async (sale: Sale) => {
     const prompt = sale.creditDebtId
-      ? `Reverse the payment for ${sale.id}? This will reopen the customer's debt.`
+      ? `Delete credit sale ${sale.id}? This is only possible before any customer payment has been recorded.`
       : `Delete sale ${sale.id}? Its items will be returned to stock.`
     if (!window.confirm(prompt)) return
     const response = await fetch(`/api/sales/${encodeURIComponent(sale.id)}`, { method: 'DELETE' })
@@ -306,6 +399,10 @@ export default function Page() {
       return
     }
     if (payload.reversedSettlement) {
+      await loadData()
+      return
+    }
+    if (payload.deletedCreditSale) {
       await loadData()
       return
     }
@@ -328,11 +425,11 @@ export default function Page() {
     setEditingSale(null)
   }
 
-  const settleDebt = async (debt: Debt, amount: number) => {
+  const settleDebt = async (debt: Debt, amount: number, paymentMethod: string) => {
     const response = await fetch(`/api/debts/${debt.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ amount }),
+      body: JSON.stringify({ amount, paymentMethod, user: username }),
     })
     const payload = await response.json()
     if (!response.ok || !payload.ok) {
@@ -357,7 +454,7 @@ export default function Page() {
     const response = await fetch('/api/products', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(input),
+      body: JSON.stringify({ ...input, user: username }),
     })
 
     const payload = await response.json()
@@ -373,7 +470,7 @@ export default function Page() {
     const response = await fetch(`/api/products/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(input),
+      body: JSON.stringify({ ...input, user: username }),
     })
     const payload = await response.json()
     if (!response.ok || !payload.ok) {
@@ -432,17 +529,41 @@ export default function Page() {
     setShowDebt(false)
   }
 
-  const createPettyCash = async (input: { amount: number; reason: string; date: string; type: PettyCash['type'] }) => {
+  const createPettyCash = async (input: { amount: number; reason: string; date: string; type: PettyCash['type']; category: string; vatAmount: number; paymentMethod: string }) => {
     const response = await fetch('/api/petty-cash', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(input),
+      body: JSON.stringify({ ...input, user: username }),
     })
     const payload = await response.json()
     if (!response.ok || !payload.ok) {
       throw new Error(payload.error ?? 'Unable to save petty cash record.')
     }
-    setPettyCash((current) => [payload.pettyCash, ...current])
+    await loadData()
+  }
+
+  const createInventoryPurchase = async (input: { supplier: string; date: string; items: { productId: number; qty: number; unitCost: number }[]; vatAmount: number; paidAmount: number; paymentMethod: string }) => {
+    const response = await fetch('/api/purchases', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...input, user: username }),
+    })
+    const payload = await response.json()
+    if (!response.ok || !payload.ok) throw new Error(payload.error ?? 'Unable to record inventory purchase.')
+    await loadData()
+    setShowPurchase(false)
+  }
+
+  const createBusinessExpense = async (input: { date: string; category: string; description: string; supplier: string; amountExclVat: number; vatAmount: number; paymentStatus: 'paid' | 'unpaid'; paymentMethod: string }) => {
+    const response = await fetch('/api/expenses', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...input, user: username }),
+    })
+    const payload = await response.json()
+    if (!response.ok || !payload.ok) throw new Error(payload.error ?? 'Unable to record business expense.')
+    await loadData()
+    setShowExpense(false)
   }
 
   const handleLogout = () => {
@@ -451,6 +572,10 @@ export default function Page() {
     setSales([])
     setDebts([])
     setPettyCash([])
+    setPurchases([])
+    setCashMovements([])
+    setAccountBalances({ cash: 0, bank: 0, mobile_money: 0, other: 0 })
+    setBusinessExpenses([])
     setPage('Dashboard')
   }
 
@@ -624,8 +749,8 @@ export default function Page() {
           {page === 'Inventory' && (
             <Inventory products={products} setShowProduct={setShowProduct} setEditingProduct={setEditingProduct} deleteProduct={deleteProduct} search={search} setSearch={setSearch} />
           )}
-          {page === 'Finances' && <FinancePage debts={debts} pettyCash={pettyCash} setShowDebt={setShowDebt} setShowPettyCash={() => setShowPettyCash(true)} onPayDebt={setPayingDebt} onDeleteDebt={deleteDebt} />}
-          {page === 'Reports' && <Reports products={products} sales={sales} pettyCash={pettyCash} totals={totals} />}
+          {page === 'Finances' && <FinancePage debts={debts} pettyCash={pettyCash} purchases={purchases} expenses={businessExpenses} cashMovements={cashMovements} accountBalances={accountBalances} setShowDebt={setShowDebt} setShowPurchase={() => setShowPurchase(true)} setShowExpense={() => setShowExpense(true)} setShowPettyCash={() => setShowPettyCash(true)} onPayDebt={setPayingDebt} onDeleteDebt={deleteDebt} />}
+          {page === 'Reports' && <Reports products={products} sales={sales} pettyCash={pettyCash} purchases={purchases} expenses={businessExpenses} totals={totals} />}
         </main>
       </div>
 
@@ -706,9 +831,36 @@ export default function Page() {
         />
       )}
 
+      {showPurchase && (
+        <InventoryPurchaseModal
+          products={products}
+          close={() => setShowPurchase(false)}
+          onSave={async (payload) => {
+            try {
+              await createInventoryPurchase(payload)
+            } catch (error) {
+              setLoginError(error instanceof Error ? error.message : 'Unable to record inventory purchase.')
+            }
+          }}
+        />
+      )}
+
+      {showExpense && (
+        <BusinessExpenseModal
+          close={() => setShowExpense(false)}
+          onSave={async (payload) => {
+            try {
+              await createBusinessExpense(payload)
+            } catch (error) {
+              setLoginError(error instanceof Error ? error.message : 'Unable to record business expense.')
+            }
+          }}
+        />
+      )}
+
       {receipt && <ReceiptModal sale={receipt} close={() => setReceipt(null)} />}
       {editingSale && <SaleEditModal sale={editingSale} products={products} close={() => setEditingSale(null)} onSave={(items, date, vat) => updateSale(editingSale, items, date, vat)} />}
-      {payingDebt && <DebtPaymentModal debt={payingDebt} close={() => setPayingDebt(null)} onPay={(amount) => settleDebt(payingDebt, amount)} />}
+      {payingDebt && <DebtPaymentModal debt={payingDebt} close={() => setPayingDebt(null)} onPay={(amount, method) => settleDebt(payingDebt, amount, method)} />}
     </div>
   )
 }
@@ -772,8 +924,8 @@ function Dashboard({ totals, lowStock, sales, products, setShowSale }: any) {
 
     return lastSevenDays.map((date) => {
       const revenue = sales
-        .filter((entry: Sale) => entry.date === date)
-        .reduce((sum: number, entry: Sale) => sum + Number(entry.total ?? 0), 0)
+        .filter((entry: Sale) => entry.date === date && entry.paymentStatus !== 'payment')
+        .reduce((sum: number, entry: Sale) => sum + getSaleRevenue(entry), 0)
 
       return {
         date,
@@ -786,7 +938,7 @@ function Dashboard({ totals, lowStock, sales, products, setShowSale }: any) {
   const categoryRevenue = useMemo(() => {
     const totalsByCategory = new Map<string, number>()
 
-    for (const entry of sales) {
+    for (const entry of sales.filter((sale: Sale) => sale.paymentStatus !== 'payment')) {
       for (const item of entry.items ?? []) {
         const product = products.find((candidate: Product) => candidate.name.toLowerCase() === item.name.toLowerCase())
         const category = product?.category ?? 'Other'
@@ -816,8 +968,14 @@ function Dashboard({ totals, lowStock, sales, products, setShowSale }: any) {
     { label: "Today's sales (excl. VAT)", value: money(totals.todaySales || 0), color: 'teal', icon: ShoppingCart, change: `${sales.length} sales` },
     { label: "Today's gross profit", value: money(totals.todayGrossProfit || 0), color: 'teal', icon: TrendingUp, change: 'Before petty cash' },
     { label: "Today's net profit", value: money(totals.todayNetProfit || 0), color: 'green', icon: TrendingUp, change: 'After petty cash' },
-    { label: 'Output VAT collected', value: money(totals.todayVat || 0), color: 'amber', icon: CircleDollarSign, change: 'Input VAT not tracked' },
+    { label: 'Output VAT collected', value: money(totals.todayVat || 0), color: 'amber', icon: CircleDollarSign, change: 'Input VAT tracked separately' },
     { label: 'Customers owe', value: money(totals.owed), color: 'amber', icon: Users, change: 'Open customer debts' },
+    { label: 'Suppliers owed', value: money(totals.owe), color: 'amber', icon: Wallet, change: 'Open supplier balances' },
+    { label: 'Inventory at cost', value: money(totals.inventory), color: 'teal', icon: Boxes, change: 'Current stock value' },
+    { label: 'Cash balance', value: money(totals.cash), color: 'green', icon: Wallet, change: 'From recorded movements' },
+    { label: 'Bank balance', value: money(totals.bank), color: 'teal', icon: CircleDollarSign, change: 'From recorded movements' },
+    { label: 'Petty cash balance', value: money(totals.pettyCashBalance), color: 'green', icon: Wallet, change: 'Tracked cash movements' },
+    { label: 'Owner drawings', value: money(totals.ownerDrawings), color: 'amber', icon: Users, change: 'Excluded from net profit' },
     { label: 'Low stock items', value: lowStock.length, color: 'red', icon: AlertTriangle, change: 'Needs attention' },
   ]
 
@@ -1058,7 +1216,7 @@ function SalesPage({ sales, products, setShowSale, setReceipt, setEditingSale, d
                   <strong>{money(entry.total)}</strong>
                 </td>
                 <td className="green-text">+{money(entry.profit)}</td>
-                <td><span className="badge success"><Check />{entry.creditDebtId ? 'Credit payment' : 'Cash'}</span></td>
+                <td><span className="badge success"><Check />{entry.paymentStatus === 'payment' ? 'Legacy payment' : entry.creditDebtId ? entry.paymentStatus === 'paid' ? 'Credit paid' : entry.paymentStatus === 'partial' ? 'Part paid' : 'Credit sale' : 'Cash'}</span></td>
                 <td>
                   <button className="icon-btn" onClick={() => setReceipt(entry)}>
                     <FileText />
@@ -1148,8 +1306,9 @@ function Inventory({ products, setShowProduct, setEditingProduct, deleteProduct,
   )
 }
 
-function DebtPaymentModal({ debt, close, onPay }: { debt: Debt; close: () => void; onPay: (amount: number) => Promise<void> }) {
+function DebtPaymentModal({ debt, close, onPay }: { debt: Debt; close: () => void; onPay: (amount: number, method: string) => Promise<void> }) {
   const [amount, setAmount] = useState(String(debt.amount))
+  const [paymentMethod, setPaymentMethod] = useState('cash')
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const payment = Number(amount)
@@ -1163,7 +1322,7 @@ function DebtPaymentModal({ debt, close, onPay }: { debt: Debt; close: () => voi
     }
     setSaving(true)
     try {
-      await onPay(payment)
+      await onPay(payment, paymentMethod)
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'Unable to record payment.')
       setSaving(false)
@@ -1171,13 +1330,14 @@ function DebtPaymentModal({ debt, close, onPay }: { debt: Debt; close: () => voi
   }
 
   return (
-    <Modal title={`Receive payment from ${debt.name}`} close={close}>
+    <Modal title={`${debt.kind === 'customer' ? 'Receive payment from' : 'Pay supplier'} ${debt.name}`} close={close}>
       <div className="payment-balance">
         <span>Outstanding debt</span><strong>{money(debt.amount)}</strong>
         {Number(debt.paidAmount ?? 0) > 0 && <small>Previously paid: {money(debt.paidAmount ?? 0)}</small>}
       </div>
       <div className="form-grid">
         <label>Amount being paid<input type="number" min="1" max={debt.amount} step="1" autoFocus value={amount} onChange={(event) => setAmount(event.target.value)} /></label>
+        <label>Payment method<select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)}><option value="cash">Cash</option><option value="petty_cash">Petty cash</option><option value="bank">Bank</option><option value="mobile_money">Mobile Money</option><option value="other">Other</option></select></label>
       </div>
       <div className="payment-remaining"><span>Balance remaining after payment</span><strong>{money(remaining)}</strong></div>
       {error ? <div className="error-text">{error}</div> : null}
@@ -1186,7 +1346,7 @@ function DebtPaymentModal({ debt, close, onPay }: { debt: Debt; close: () => voi
   )
 }
 
-function FinancePage({ debts, pettyCash, setShowDebt, setShowPettyCash, onPayDebt, onDeleteDebt }: any) {
+function FinancePage({ debts, pettyCash, purchases, expenses, cashMovements, accountBalances, setShowDebt, setShowPurchase, setShowExpense, setShowPettyCash, onPayDebt, onDeleteDebt }: any) {
   const customers = debts.filter((item: Debt) => item.kind === 'customer')
   const suppliers = debts.filter((item: Debt) => item.kind === 'supplier')
   const [customerSearch, setCustomerSearch] = useState('')
@@ -1201,7 +1361,12 @@ function FinancePage({ debts, pettyCash, setShowDebt, setShowPettyCash, onPayDeb
 
   return (
     <>
-      <Header title="Finances" subtitle="Keep track of money owed to you, payments you need to make, and cash withdrawn for shop expenses." action="Add debt" onAction={() => setShowDebt(true)} />
+      <Header title="Finances" subtitle="Keep track of money owed to you, payments you need to make, and cash withdrawn for shop expenses." />
+      <div className="finance-actions">
+        <button className="outline-btn" onClick={() => setShowDebt(true)}><Plus /> Add debt</button>
+        <button className="outline-btn" onClick={() => setShowExpense(true)}><Plus /> Record expense</button>
+        <button className="primary-btn compact" onClick={() => setShowPurchase(true)}><Package /> Receive inventory</button>
+      </div>
       <div className="finance-summary">
         <div>
           <span>Money owed to you</span>
@@ -1213,6 +1378,7 @@ function FinancePage({ debts, pettyCash, setShowDebt, setShowPettyCash, onPayDeb
           <strong>{money(suppliers.reduce((sum: number, entry: Debt) => sum + entry.amount, 0))}</strong>
           <small>To {suppliers.length} suppliers</small>
         </div>
+        <div><span>Cash / bank</span><strong>{money(accountBalances.cash + accountBalances.bank)}</strong><small>Excludes petty cash and mobile money</small></div>
       </div>
 
       <div className="debt-columns">
@@ -1249,6 +1415,43 @@ function FinancePage({ debts, pettyCash, setShowDebt, setShowPettyCash, onPayDeb
         </div>
       </div>
 
+      <div className="panel account-movements-panel">
+        <div className="panel-head"><div><h2>Cash and bank activity</h2><p>Receipts and payments change balances, not profit by themselves.</p></div><span className="count-badge teal-bg">{cashMovements.length}</span></div>
+        {cashMovements.length ? <div className="account-movement-list">
+          {cashMovements.slice(0, 12).map((movement: CashMovement) => <div className="account-movement-row" key={movement.id}>
+            <span><strong>{movement.type.replaceAll('_', ' ')}</strong><small>{movement.date} · {movement.account.replaceAll('_', ' ')} · {movement.reference}</small></span>
+            <strong className={movement.amount >= 0 ? 'green-text' : 'negative'}>{movement.amount >= 0 ? '+' : '−'}{money(Math.abs(movement.amount))}</strong>
+          </div>)}
+        </div> : <div className="empty-state">No cash or bank movements recorded yet.</div>}
+      </div>
+
+      <div className="panel business-expense-history">
+        <div className="panel-head"><div><h2>Business expenses</h2><p>Recognized on the expense date; unpaid balances remain in supplier payables.</p></div><span className="count-badge amber-bg">{expenses.length}</span></div>
+        {expenses.length ? <div className="business-expense-list">
+          {expenses.map((expense: BusinessExpense) => <div className="business-expense-row" key={expense.id}>
+            <span><strong>{expense.category} · {expense.description}</strong><small>{expense.date}{expense.supplier ? ` · ${expense.supplier}` : ''} · {expense.paymentStatus === 'paid' ? 'Paid' : expense.paymentStatus === 'partial' ? 'Partially paid' : 'Unpaid'}</small></span>
+            <strong>{money(expense.amountExclVat)}<small>VAT {money(expense.vatAmount)} · Total {money(expense.total)}</small></strong>
+          </div>)}
+        </div> : <div className="empty-state">No business expenses recorded.</div>}
+      </div>
+
+      <div className="panel inventory-purchase-history">
+        <div className="panel-head">
+          <div><h2>Inventory purchases</h2><p>Purchases increase stock; only items sold enter COGS.</p></div>
+          <span className="count-badge teal-bg">{purchases.length}</span>
+        </div>
+        {purchases.length ? <div className="purchase-history-list">
+          {purchases.map((purchase: InventoryPurchase) => {
+            const inventoryCost = purchase.items.reduce((sum, item) => sum + Number(item.qty) * Number(item.unitCost), 0)
+            return <div className="purchase-history-row" key={purchase.id}>
+              <div><strong>{purchase.supplier}</strong><small>{purchase.id} · {purchase.date} · {purchase.items.map((item) => `${item.name} (${formatQuantity(item.qty, item.unit)})`).join(', ')}</small></div>
+              <span>Inventory {money(inventoryCost)}<small>VAT {money(purchase.vatAmount)}</small></span>
+              <span>Paid {money(purchase.paidAmount)}<small>Owing {money(Math.max(0, purchase.total - purchase.paidAmount))}</small></span>
+            </div>
+          })}
+        </div> : <div className="empty-state">No inventory purchases recorded.</div>}
+      </div>
+
       <div className="panel petty-cash-panel">
         <div className="panel-head">
           <div className="petty-cash-title">
@@ -1258,10 +1461,10 @@ function FinancePage({ debts, pettyCash, setShowDebt, setShowPettyCash, onPayDeb
               <p>Shop expenses paid from sales cash</p>
             </div>
           </div>
-          <button className="outline-btn" onClick={setShowPettyCash}><Plus /> Record transaction</button>
+          <button className="outline-btn" onClick={setShowPettyCash}><Plus /> Withdraw from Petty Cash</button>
         </div>
         <div className="petty-cash-summary">
-                <div><span>Total petty cash transactions</span><strong>{money(pettyCash.reduce((sum: number, entry: PettyCash) => sum + entry.amount, 0))}</strong></div>
+                <div><span>Petty cash balance</span><strong>{money(pettyCash.reduce((balance: number, entry: PettyCash) => balance + (['owner_contribution', 'customer_payment', 'cash_in', 'other_income'].includes(entry.type) ? entry.amount : -entry.amount), 0))}</strong></div>
           <span className="petty-cash-count">{pettyCash.length} {pettyCash.length === 1 ? 'expense' : 'expenses'}</span>
         </div>
         <BrowseControls count={pettyCash.length} query={pettyCashSearch} onQueryChange={setPettyCashSearch} scrollRef={pettyCashListRef} placeholder="Search expenses..." />
@@ -1269,8 +1472,8 @@ function FinancePage({ debts, pettyCash, setShowDebt, setShowPettyCash, onPayDeb
           {visiblePettyCash.length ? visiblePettyCash.map((entry: PettyCash) => (
             <div className="petty-cash-entry" key={entry.id}>
               <span className="expense-indicator"><Wallet /></span>
-              <span className="expense-description"><strong>{entry.reason}</strong><small>{entry.type === 'expense' ? 'Business expense' : entry.type === 'owner_drawing' ? 'Owner drawing' : 'Cash transfer'} · {new Date(`${entry.date}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</small></span>
-              <strong className="expense-amount">−{money(entry.amount)}</strong>
+              <span className="expense-description"><strong>{entry.reason}</strong><small>{entry.category || (entry.type === 'expense' ? 'Business expense' : entry.type === 'business_expense_payment' ? 'Business expense payment' : entry.type === 'other_expense' ? 'Other business expense' : entry.type === 'other_income' ? 'Other business income' : entry.type === 'owner_drawing' ? 'Owner drawing' : entry.type === 'owner_contribution' ? 'Owner capital contribution' : entry.type === 'customer_payment' ? 'Customer payment' : entry.type === 'supplier_payment' ? 'Supplier payment' : entry.type === 'inventory_purchase_payment' ? 'Inventory purchase payment' : 'Cash transfer')} · {new Date(`${entry.date}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} · Balance {money(entry.runningBalance ?? 0)} · {entry.user ?? 'unknown'} · Ref {entry.reference || entry.id}</small></span>
+              <strong className={`expense-amount ${['owner_contribution', 'customer_payment', 'cash_in', 'other_income'].includes(entry.type) ? 'cash-in-amount' : ''}`}>{['owner_contribution', 'customer_payment', 'cash_in', 'other_income'].includes(entry.type) ? '+' : '−'}{money(entry.amount)}</strong>
             </div>
           )) : pettyCash.length ? <div className="empty-state">No matching expenses.</div> : <div className="petty-cash-empty"><Wallet /><span>No expenses recorded yet</span><small>Your petty cash entries will appear here.</small></div>}
         </div>
@@ -1284,7 +1487,7 @@ function DebtRow({ entry, onPayDebt, onDeleteDebt }: { entry: Debt; onPayDebt: (
   const remainingAmount = Math.max(0, Number(entry.amount ?? 0))
   const originalAmount = Math.max(Number(entry.original ?? 0), paidAmount + remainingAmount, 1)
   const isCustomer = entry.kind === 'customer'
-  const isCleared = isCustomer && (entry.status === 'paid' || remainingAmount === 0)
+  const isCleared = entry.status === 'paid' || remainingAmount === 0
   const paidPercent = isCleared ? 100 : Math.min(100, (paidAmount / originalAmount) * 100)
 
   return (
@@ -1319,13 +1522,17 @@ function DebtRow({ entry, onPayDebt, onDeleteDebt }: { entry: Debt; onPayDebt: (
           <span className="debt-remaining-label">{isCleared ? 'Remaining' : 'Remaining to pay'}</span>
           <strong className={`debt-remaining-value ${isCleared ? 'is-cleared' : ''}`}>{money(remainingAmount)}</strong>
           {isCleared ? <><span className="debt-cleared-note"><Check /> Paid in full</span><button className="danger-btn settle-debt" onClick={() => onDeleteDebt?.(entry)}><Trash2 /> Delete</button></> : <button className="outline-btn settle-debt" disabled={entry.status === 'settling'} onClick={() => onPayDebt(entry)}>{entry.status === 'settling' ? 'Processing' : 'Pay now'}</button>}
-        </> : <strong>{money(entry.amount)}</strong>}
+        </> : <>
+          <span className="debt-remaining-label">Outstanding balance</span>
+          <strong className="debt-remaining-value">{money(remainingAmount)}</strong>
+          {isCleared ? <span className="debt-cleared-note"><Check /> Paid in full</span> : <button className="outline-btn settle-debt" disabled={entry.status === 'settling'} onClick={() => onPayDebt(entry)}>{entry.status === 'settling' ? 'Processing' : 'Pay supplier'}</button>}
+        </>}
       </div>
     </div>
   )
 }
 
-function Reports({ sales, products, pettyCash, totals }: any) {
+function Reports({ sales, products, pettyCash, purchases, expenses, totals }: any) {
   const [range, setRange] = useState<'day' | 'week' | 'month'>('day')
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0, 10))
   const [productSearch, setProductSearch] = useState('')
@@ -1336,17 +1543,29 @@ function Reports({ sales, products, pettyCash, totals }: any) {
     if (range === 'week') start.setDate(start.getDate() - 6)
     if (range === 'month') start.setDate(1)
     const startDate = start.toISOString().slice(0, 10)
-    const entries = sales.filter((entry: Sale) => entry.date >= startDate && entry.date <= selectedDate)
-    const revenue = entries.reduce((sum: number, entry: Sale) => sum + (entry.vat ? Number(entry.total || 0) / 1.18 : Number(entry.total || 0)), 0)
-    const vat = entries.reduce((sum: number, entry: Sale) => sum + (entry.vat ? Number(entry.total || 0) - Number(entry.total || 0) / 1.18 : 0), 0)
+    const entries = sales.filter((entry: Sale) => entry.paymentStatus !== 'payment' && entry.date >= startDate && entry.date <= selectedDate)
+    const revenue = entries.reduce((sum: number, entry: Sale) => sum + getSaleRevenue(entry), 0)
+    const vat = entries.reduce((sum: number, entry: Sale) => sum + getSaleVat(entry), 0)
     const cost = entries.flatMap((entry: Sale) => entry.items).reduce((sum: number, item: Sale['items'][number]) => sum + Number(item.buy || 0) * Number(item.qty || 0), 0)
-    const operatingExpenses = pettyCash.filter((entry: PettyCash) => entry.type === 'expense' && entry.date >= startDate && entry.date <= selectedDate).reduce((sum: number, entry: PettyCash) => sum + Number(entry.amount || 0), 0)
+    const periodPettyCash = pettyCash.filter((entry: PettyCash) => entry.date >= startDate && entry.date <= selectedDate)
+    const periodPurchases = purchases.filter((entry: InventoryPurchase) => entry.date >= startDate && entry.date <= selectedDate)
+    const periodExpenses = expenses.filter((entry: BusinessExpense) => entry.date >= startDate && entry.date <= selectedDate)
+    const operatingExpenses = periodPettyCash.filter((entry: PettyCash) => entry.type === 'expense').reduce((sum: number, entry: PettyCash) => sum + Math.max(0, Number(entry.amount || 0) - Number(entry.vatAmount || 0)), 0)
+      + periodExpenses.reduce((sum: number, entry: BusinessExpense) => sum + Number(entry.amountExclVat || 0), 0)
+    const otherBusinessIncome = periodPettyCash.filter((entry: PettyCash) => entry.type === 'other_income').reduce((sum: number, entry: PettyCash) => sum + Number(entry.amount || 0), 0)
+    const otherBusinessExpenses = periodPettyCash.filter((entry: PettyCash) => entry.type === 'other_expense').reduce((sum: number, entry: PettyCash) => sum + Math.max(0, Number(entry.amount || 0) - Number(entry.vatAmount || 0)), 0)
+    const inputVat = periodPettyCash.filter((entry: PettyCash) => ['expense', 'other_expense'].includes(entry.type)).reduce((sum: number, entry: PettyCash) => sum + Number(entry.vatAmount || 0), 0)
+      + periodPurchases.reduce((sum: number, entry: InventoryPurchase) => sum + Number(entry.vatAmount || 0), 0)
+      + periodExpenses.reduce((sum: number, entry: BusinessExpense) => sum + Number(entry.vatAmount || 0) * Math.min(1, Number(entry.paidAmount || 0) / Math.max(Number(entry.total || 0), 1)), 0)
     const ownerDrawings = pettyCash.filter((entry: PettyCash) => entry.type === 'owner_drawing' && entry.date >= startDate && entry.date <= selectedDate).reduce((sum: number, entry: PettyCash) => sum + Number(entry.amount || 0), 0)
+    const ownerContributions = pettyCash.filter((entry: PettyCash) => entry.type === 'owner_contribution' && entry.date >= startDate && entry.date <= selectedDate).reduce((sum: number, entry: PettyCash) => sum + Number(entry.amount || 0), 0)
     const grossProfit = revenue - cost
     const operatingProfit = grossProfit - operatingExpenses
-    const netProfit = operatingProfit
-    return { entries, revenue, vat, operatingExpenses, ownerDrawings, grossProfit, operatingProfit, netProfit, cost, loss: Math.max(0, -netProfit), startDate }
-  }, [range, selectedDate, sales, pettyCash])
+    const netProfit = operatingProfit + otherBusinessIncome - otherBusinessExpenses
+    const netVat = vat - inputVat
+    const vatConfigured = vat > 0 || inputVat > 0 || periodExpenses.some((entry: BusinessExpense) => entry.vatAmount > 0) || periodPurchases.some((entry: InventoryPurchase) => entry.vatAmount > 0)
+    return { entries, revenue, vat, inputVat, netVat, vatConfigured, operatingExpenses, otherBusinessIncome, otherBusinessExpenses, ownerDrawings, ownerContributions, grossProfit, operatingProfit, netProfit, cost, loss: Math.max(0, -netProfit), startDate }
+  }, [range, selectedDate, sales, pettyCash, purchases, expenses])
 
   const productPerformance = useMemo(() => {
     const items = report.entries.flatMap((entry: Sale) => entry.items)
@@ -1416,30 +1635,44 @@ function Reports({ sales, products, pettyCash, totals }: any) {
           <h3>Income statement</h3>
           <div className="document-grid">
             <div><span>Sales revenue (excluding VAT)</span><strong>{money(report.revenue)}</strong></div>
-            <div><span>Cost of goods sold</span><strong>−{money(report.cost)}</strong><small>Cost recorded on items sold; purchases are not tracked.</small></div>
+            <div><span>Cost of goods sold</span><strong>−{money(report.cost)}</strong><small>Cost of inventory items sold during this period.</small></div>
             <div><span>Gross profit</span><strong className={report.grossProfit >= 0 ? 'green-text' : 'negative'}>{money(report.grossProfit)}</strong></div>
             <div><span>Recorded business expenses</span><strong>−{money(report.operatingExpenses)}</strong></div>
             <div><span>Operating profit</span><strong className={report.operatingProfit >= 0 ? 'green-text' : 'negative'}>{money(report.operatingProfit)}</strong></div>
-            <div><span>Net profit (recorded items)</span><strong className={report.netProfit >= 0 ? 'green-text' : 'negative'}>{money(report.netProfit)}</strong><small>Other expenses and income are not tracked.</small></div>
+            <div><span>Other business expenses</span><strong>−{money(report.otherBusinessExpenses)}</strong></div>
+            <div><span>Other business income</span><strong>+{money(report.otherBusinessIncome)}</strong></div>
+            <div><span>Net profit</span><strong className={report.netProfit >= 0 ? 'green-text' : 'negative'}>{money(report.netProfit)}</strong></div>
           </div>
         </section>
         <section className="statement-section">
           <h3>Tax and owner activity</h3>
           <div className="document-grid">
             <div><span>Output VAT collected</span><strong>{money(report.vat)}</strong></div>
-            <div><span>Input VAT</span><strong>Not tracked</strong></div>
-            <div><span>Net VAT payable</span><strong>Cannot calculate</strong></div>
-            <div><span>Owner drawings (selected period)</span><strong>{money(report.ownerDrawings)}</strong><small>Not included in expenses or net profit.</small></div>
+            <div><span>Input VAT</span><strong>{report.vatConfigured ? `−${money(report.inputVat)}` : 'VAT not configured'}</strong></div>
+            <div><span>Net VAT payable / credit</span><strong>{report.vatConfigured ? report.netVat >= 0 ? money(report.netVat) + ' payable' : money(Math.abs(report.netVat)) + ' credit' : 'VAT not configured'}</strong></div>
+            <div><span>Owner capital contributions (selected period)</span><strong>{money(report.ownerContributions)}</strong><small>Capital, not sales revenue.</small></div>
+            <div><span>Owner personal withdrawals (selected period)</span><strong>−{money(report.ownerDrawings)}</strong><small>Not included in expenses or net profit.</small></div>
           </div>
         </section>
         <section className="statement-section">
           <h3>Financial position (current balances)</h3>
           <div className="document-grid">
+            <div><span>Total assets (recorded balances)</span><strong>{money(totals.totalAssets)}</strong></div>
             <div><span>Inventory at recorded cost</span><strong>{money(products.reduce((sum: number, product: Product) => sum + product.stock * product.buy, 0))}</strong></div>
             <div><span>Customer receivables</span><strong>{money(totals.owed)}</strong></div>
+            <div><span>Cash</span><strong>{money(totals.cash)}</strong></div>
+            <div><span>Bank</span><strong>{money(totals.bank)}</strong></div>
+            <div><span>Mobile money and other accounts</span><strong>{money(totals.mobileMoney + totals.otherAccounts)}</strong></div>
+            <div><span>Petty cash</span><strong>{money(totals.pettyCashBalance)}</strong></div>
+            <div><span>Total liabilities (recorded balances)</span><strong>{money(totals.totalLiabilities)}</strong></div>
             <div><span>Supplier payables</span><strong>{money(totals.owe)}</strong></div>
-            <div><span>Cash and bank</span><strong>Not tracked</strong></div>
-            <div><span>Owner capital and retained earnings</span><strong>Not tracked</strong></div>
+            <div><span>VAT payable</span><strong>{totals.outputVat >= totals.inputVat ? money(totals.vatPayable) : '0 RWF'}</strong></div>
+            <div><span>VAT credit</span><strong>{totals.vatCredit ? money(totals.vatCredit) : '0 RWF'}</strong></div>
+            <div><span>Owner capital contributions</span><strong>{money(totals.ownerContributions)}</strong></div>
+            <div><span>Retained earnings opening balance</span><strong>Not configured</strong></div>
+            <div><span>Current recorded equity estimate</span><strong>{money(totals.knownEquity)}</strong><small>Contributions + recorded net profit − personal drawings.</small></div>
+            <div><span>Unreconciled difference</span><strong className={Math.abs(totals.balanceDifference) < 1 ? 'green-text' : 'negative'}>{money(totals.balanceDifference)}</strong></div>
+            <div><span>Accounting equation check</span><strong>Incomplete: opening balances required</strong><small>Opening inventory, capital, retained earnings, and any unrecorded assets/liabilities are unknown; this difference is not a full balance assertion.</small></div>
           </div>
         </section>
       </div>
@@ -1871,28 +2104,142 @@ function DebtModal({ close, onSave }: { close: () => void; onSave: (payload: { n
   )
 }
 
-function PettyCashModal({ close, onSave }: { close: () => void; onSave: (payload: { amount: number; reason: string; date: string; type: PettyCash['type'] }) => Promise<void> }) {
+function BusinessExpenseModal({ close, onSave }: { close: () => void; onSave: (input: { date: string; category: string; description: string; supplier: string; amountExclVat: number; vatAmount: number; paymentStatus: 'paid' | 'unpaid'; paymentMethod: string }) => Promise<void> }) {
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
+  const [category, setCategory] = useState('Other operating expense')
+  const [description, setDescription] = useState('')
+  const [supplier, setSupplier] = useState('')
+  const [amountExclVat, setAmountExclVat] = useState('')
+  const [vatAmount, setVatAmount] = useState('0')
+  const [paymentStatus, setPaymentStatus] = useState<'paid' | 'unpaid'>('paid')
+  const [paymentMethod, setPaymentMethod] = useState('cash')
+  const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const save = async () => {
+    setSaving(true)
+    setError('')
+    try {
+      await onSave({ date, category, description: description.trim(), supplier: supplier.trim(), amountExclVat: Number(amountExclVat), vatAmount: Number(vatAmount || 0), paymentStatus, paymentMethod })
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Unable to record business expense.')
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Modal title="Record business expense" close={close}>
+      <div className="form-grid">
+        <label>Expense date<input type="date" value={date} onChange={(event) => setDate(event.target.value)} /></label>
+        <label>Category<select value={category} onChange={(event) => setCategory(event.target.value)}><option>Rent</option><option>Electricity</option><option>Internet</option><option>Transport</option><option>Salaries</option><option>Repairs</option><option>Packaging</option><option>Advertising</option><option>Bank charges</option><option>Cleaning</option><option>Office supplies</option><option>Other operating expense</option></select></label>
+        <label>Description<input value={description} onChange={(event) => setDescription(event.target.value)} placeholder="What was this expense for?" /></label>
+        <label>Supplier / payee (optional)<input value={supplier} onChange={(event) => setSupplier(event.target.value)} placeholder="Supplier or service provider" /></label>
+        <label>Amount excluding VAT<input type="number" min="0.01" step="0.01" value={amountExclVat} onChange={(event) => setAmountExclVat(event.target.value)} /></label>
+        <label>Input VAT<input type="number" min="0" step="0.01" value={vatAmount} onChange={(event) => setVatAmount(event.target.value)} /></label>
+        <label>Payment status<select value={paymentStatus} onChange={(event) => setPaymentStatus(event.target.value as 'paid' | 'unpaid')}><option value="paid">Paid</option><option value="unpaid">Unpaid</option></select></label>
+        {paymentStatus === 'paid' && <label>Payment method<select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)}><option value="cash">Cash</option><option value="petty_cash">Petty cash</option><option value="bank">Bank</option><option value="mobile_money">Mobile Money</option><option value="other">Other</option></select></label>}
+      </div>
+      <div className="payment-remaining"><span>Total expense including VAT</span><strong>{money(Number(amountExclVat || 0) + Number(vatAmount || 0))}</strong></div>
+      {error ? <div className="error-text">{error}</div> : null}
+      <button className="primary-btn full" disabled={saving || !description.trim() || Number(amountExclVat) <= 0 || Number(vatAmount) < 0} onClick={() => void save()}>{saving ? 'Saving expense…' : 'Save expense'} <Check /></button>
+    </Modal>
+  )
+}
+
+function PettyCashModal({ close, onSave }: { close: () => void; onSave: (payload: { amount: number; reason: string; date: string; type: PettyCash['type']; category: string; vatAmount: number; paymentMethod: string }) => Promise<void> }) {
   const [amount, setAmount] = useState('')
   const [reason, setReason] = useState('')
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
-  const [type, setType] = useState<PettyCash['type'] | ''>('')
+  const [type, setType] = useState<'expense' | 'other_expense' | 'other_income' | 'owner_drawing' | 'owner_contribution' | 'transfer' | ''>('')
+  const [category, setCategory] = useState('Other operating expense')
+  const [vatAmount, setVatAmount] = useState('0')
+  const [transferAccount, setTransferAccount] = useState('cash')
 
   const save = async () => {
     if (!amount || !reason.trim() || !type) {
       return
     }
-    await onSave({ amount: Number(amount), reason: reason.trim(), date, type })
+    await onSave({ amount: Number(amount), reason: reason.trim(), date, type, category: ['expense', 'other_expense'].includes(type) ? category : type === 'owner_drawing' ? 'Personal withdrawal' : type === 'owner_contribution' ? 'Owner capital contribution' : type === 'other_income' ? 'Other business income' : 'Cash transfer', vatAmount: ['expense', 'other_expense'].includes(type) ? Number(vatAmount || 0) : 0, paymentMethod: transferAccount })
   }
 
   return (
-    <Modal title="Record petty cash transaction" close={close}>
+    <Modal title="Petty cash movement" close={close}>
       <div className="form-grid">
-        <label>Amount<input type="number" min="0" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="RWF" /></label>
+        <label>Transaction type<select required value={type} onChange={(event) => setType(event.target.value as typeof type)}><option value="">Choose transaction type</option><option value="expense">Business operating expense</option><option value="other_expense">Other business expense</option><option value="other_income">Other business income</option><option value="owner_drawing">Personal expense</option><option value="transfer">Cash transfer (not an expense)</option><option value="owner_contribution">Owner capital contribution</option></select></label>
+        {['expense', 'other_expense'].includes(type) && <label>Expense category<select value={category} onChange={(event) => setCategory(event.target.value)}><option>Rent</option><option>Electricity</option><option>Internet</option><option>Transport</option><option>Salaries</option><option>Repairs</option><option>Packaging</option><option>Advertising</option><option>Bank charges</option><option>Cleaning</option><option>Office supplies</option><option>Other operating expense</option></select></label>}
+        <label>Amount<input type="number" min="1" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="RWF" /></label>
         <label>Date<input type="date" value={date} onChange={(event) => setDate(event.target.value)} /></label>
-        <label>Transaction type<select required value={type} onChange={(event) => setType(event.target.value as PettyCash['type'] | '')}><option value="">Select how the cash was used</option><option value="expense">Business expense</option><option value="transfer">Cash transfer (not an expense)</option><option value="owner_drawing">Owner drawing (not an expense)</option></select></label>
-        <label>Reason<input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="e.g. Bought packaging materials" /></label>
+        {['expense', 'other_expense'].includes(type) && <label>VAT included in amount<input type="number" min="0" max={amount || undefined} value={vatAmount} onChange={(event) => setVatAmount(event.target.value)} /></label>}
+        {type === 'transfer' && <label>Transfer destination<select value={transferAccount} onChange={(event) => setTransferAccount(event.target.value)}><option value="cash">Cash</option><option value="bank">Bank</option><option value="mobile_money">Mobile Money</option><option value="other">Other</option></select></label>}
+        <label>Explanation / description<input value={reason} onChange={(event) => setReason(event.target.value)} placeholder={type === 'owner_drawing' ? 'Owner personal use' : 'e.g. Bought cleaning materials'} /></label>
       </div>
-      <button className="primary-btn full" disabled={!type || !amount || !reason.trim()} onClick={() => void save()}>Save transaction <Wallet /></button>
+      <button className="primary-btn full" disabled={!type || !amount || Number(amount) <= 0 || !reason.trim()} onClick={() => void save()}>{type === 'owner_contribution' ? 'Add capital' : type === 'transfer' ? 'Record transfer' : type === 'other_income' ? 'Record income' : type === 'expense' || type === 'other_expense' ? 'Save business expense' : 'Save withdrawal'} <Wallet /></button>
+    </Modal>
+  )
+}
+
+function InventoryPurchaseModal({ products, close, onSave }: { products: Product[]; close: () => void; onSave: (input: { supplier: string; date: string; items: { productId: number; qty: number; unitCost: number }[]; vatAmount: number; paidAmount: number; paymentMethod: string }) => Promise<void> }) {
+  const [supplier, setSupplier] = useState('')
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
+  const [productId, setProductId] = useState('')
+  const [items, setItems] = useState<{ productId: number; qty: number; unitCost: number }[]>([])
+  const [vatAmount, setVatAmount] = useState('0')
+  const [paidAmount, setPaidAmount] = useState('0')
+  const [paymentMethod, setPaymentMethod] = useState('cash')
+  const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
+  const subtotal = items.reduce((sum, item) => sum + item.qty * item.unitCost, 0)
+  const total = subtotal + Number(vatAmount || 0)
+
+  const addItem = () => {
+    const product = products.find((entry) => entry.id === Number(productId))
+    if (!product || items.some((item) => item.productId === product.id)) return
+    setItems((current) => [...current, { productId: product.id, qty: 1, unitCost: product.buy }])
+    setProductId('')
+  }
+
+  const save = async () => {
+    setSaving(true)
+    setError('')
+    try {
+      await onSave({ supplier: supplier.trim(), date, items, vatAmount: Number(vatAmount || 0), paidAmount: Number(paidAmount || 0), paymentMethod })
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Unable to record inventory purchase.')
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Modal title="Receive inventory purchase" close={close}>
+      <div className="form-grid">
+        <label>Supplier<input value={supplier} onChange={(event) => setSupplier(event.target.value)} placeholder="Supplier name" /></label>
+        <label>Purchase date<input type="date" value={date} onChange={(event) => setDate(event.target.value)} /></label>
+      </div>
+      <div className="purchase-add-row">
+        <label>Product<select value={productId} onChange={(event) => setProductId(event.target.value)}><option value="">Select product</option>{products.filter((product) => !items.some((item) => item.productId === product.id)).map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}</select></label>
+        <button className="outline-btn" type="button" disabled={!productId} onClick={addItem}><Plus /> Add item</button>
+      </div>
+      <div className="purchase-lines">
+        {items.map((item) => {
+          const product = products.find((entry) => entry.id === item.productId)
+          if (!product) return null
+          return <div className="purchase-line" key={item.productId}>
+            <strong>{product.name}<small>Current stock: {formatQuantity(product.stock, product.unit)}</small></strong>
+            <label>Quantity<input type="number" min="0.01" step={getQuantityStep(product.unit)} value={item.qty} onChange={(event) => setItems((current) => current.map((entry) => entry.productId === item.productId ? { ...entry, qty: Number(event.target.value) } : entry))} /></label>
+            <label>Unit cost<input type="number" min="0" step="1" value={item.unitCost} onChange={(event) => setItems((current) => current.map((entry) => entry.productId === item.productId ? { ...entry, unitCost: Number(event.target.value) } : entry))} /></label>
+            <button className="icon-btn danger-icon" type="button" aria-label={`Remove ${product.name}`} onClick={() => setItems((current) => current.filter((entry) => entry.productId !== item.productId))}><X /></button>
+          </div>
+        })}
+        {!items.length && <div className="empty-state">Add products received from this supplier.</div>}
+      </div>
+      <div className="form-grid purchase-payment-fields">
+        <label>Input VAT<input type="number" min="0" value={vatAmount} onChange={(event) => setVatAmount(event.target.value)} /></label>
+        <label>Amount paid now<input type="number" min="0" max={total} value={paidAmount} onChange={(event) => setPaidAmount(event.target.value)} /></label>
+        <label>Payment method<select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)}><option value="cash">Cash</option><option value="petty_cash">Petty cash</option><option value="bank">Bank</option><option value="mobile_money">Mobile Money</option><option value="other">Other</option></select></label>
+      </div>
+      <div className="payment-remaining"><span>Inventory subtotal {money(subtotal)} · Purchase total {money(total)}</span><strong>Supplier balance {money(Math.max(0, total - Number(paidAmount || 0)))}</strong></div>
+      {error ? <div className="error-text">{error}</div> : null}
+      <button className="primary-btn full" disabled={saving || !supplier.trim() || !items.length || items.some((item) => item.qty <= 0 || item.unitCost < 0) || Number(vatAmount) < 0 || Number(paidAmount) < 0 || Number(paidAmount) > total} onClick={() => void save()}>{saving ? 'Saving purchase…' : 'Save inventory purchase'} <Check /></button>
     </Modal>
   )
 }
@@ -1925,11 +2272,11 @@ function ReceiptModal({ sale, close }: { sale: Sale; close: () => void }) {
 
         <div className="receipt-total">
           <span>
-            Subtotal <strong>{money(sale.total / (sale.vat ? 1.18 : 1))}</strong>
+            Subtotal <strong>{money(sale.total - getSaleVat(sale))}</strong>
           </span>
           {sale.vat && (
             <span>
-              VAT (18%) <strong>{money(sale.total - sale.total / 1.18)}</strong>
+              VAT (18%) <strong>{money(getSaleVat(sale))}</strong>
             </span>
           )}
           <span className="total">

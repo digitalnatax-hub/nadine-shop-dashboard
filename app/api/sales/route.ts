@@ -12,6 +12,11 @@ export async function GET() {
       total: Number(sale.total ?? 0),
       profit: Number(sale.profit ?? 0),
       vat: Boolean(sale.vat),
+      vatRate: Number(sale.vatRate ?? (sale.vat ? 0.18 : 0)),
+      vatAmount: Number(sale.vatAmount ?? (sale.vat ? Number(sale.total ?? 0) - Number(sale.total ?? 0) / 1.18 : 0)),
+      paymentStatus: sale.paymentStatus ?? (sale.paymentAmount !== undefined ? 'payment' : sale.creditDebtId ? 'unpaid' : 'paid'),
+      amountPaid: Number(sale.amountPaid ?? sale.paymentAmount ?? (sale.creditDebtId ? 0 : sale.total ?? 0)),
+      customerBalance: Number(sale.customerBalance ?? (sale.paymentAmount !== undefined ? 0 : sale.creditDebtId ? sale.total : 0)),
       creditDebtId: sale.creditDebtId,
     })) })
   } catch (error) {
@@ -37,6 +42,7 @@ export async function POST(request: Request) {
     const products = await getCollection<any>('products')
     const items = []
     const reserved: { id: number; qty: number }[] = []
+    let saleSaved = false
 
     try {
       for (const requested of requestedItems) {
@@ -55,11 +61,19 @@ export async function POST(request: Request) {
 
       const subtotal = items.reduce((sum, item) => sum + item.price * item.qty, 0)
       const profit = items.reduce((sum, item) => sum + (item.price - item.buy) * item.qty, 0)
-      const sale = { id: saleId, date: saleDate, items, total: subtotal * (vat ? 1.18 : 1), profit, vat, createdAt: new Date() }
+      const total = subtotal * (vat ? 1.18 : 1)
+      const vatAmount = total - subtotal
+      const sale = { id: saleId, date: saleDate, items, subtotal, total, vatRate: vat ? 0.18 : 0, vatAmount, profit, vat, paymentStatus: 'paid', amountPaid: total, customerBalance: 0, createdAt: new Date() }
       await sales.insertOne(sale)
+      saleSaved = true
+      await (await getCollection<any>('cash_movements')).insertOne({ id: `SALE-${saleId}`, date: saleDate, account: 'cash', type: 'sale_receipt', amount: total, reference: saleId, createdAt: new Date() })
 
-      return NextResponse.json({ ok: true, sale: { id: saleId, date: saleDate, items, total: sale.total, profit, vat } })
+      return NextResponse.json({ ok: true, sale: { id: saleId, date: saleDate, items, subtotal, total, vatAmount, vatRate: sale.vatRate, profit, vat, paymentStatus: 'paid', amountPaid: total, customerBalance: 0 } })
     } catch (error) {
+      if (saleSaved) {
+        await sales.deleteOne({ id: saleId })
+        await (await getCollection<any>('cash_movements')).deleteOne({ id: `SALE-${saleId}` })
+      }
       for (const item of reserved.reverse()) {
         await products.updateOne({ id: item.id }, { $inc: { stock: item.qty } })
       }

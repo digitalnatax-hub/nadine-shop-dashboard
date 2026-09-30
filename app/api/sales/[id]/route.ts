@@ -64,7 +64,16 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       const profit = newItems.reduce((sum, item) => sum + (item.price - item.buy) * item.qty, 0)
       const vat = Boolean(body.vat)
       const updatedSale = { ...sale, date: String(body.date ?? sale.date), items: newItems, vat, total: subtotal * (vat ? 1.18 : 1), profit, updatedAt: new Date() }
+      updatedSale.subtotal = subtotal
+      updatedSale.vatRate = vat ? 0.18 : 0
+      updatedSale.vatAmount = updatedSale.total - subtotal
+      updatedSale.paymentStatus = 'paid'
+      updatedSale.amountPaid = updatedSale.total
+      updatedSale.customerBalance = 0
       await sales.updateOne({ _id: sale._id }, { $set: updatedSale })
+      if (sale.creditDebtId === undefined) {
+        await (await getCollection<any>('cash_movements')).updateOne({ id: `SALE-${id}` }, { $set: { amount: updatedSale.total, date: updatedSale.date } })
+      }
       return NextResponse.json({ ok: true, sale: { id, date: updatedSale.date, items: newItems, vat, total: updatedSale.total, profit } })
     } catch (error) {
       for (const change of applied.reverse()) await products.updateOne({ id: change.id }, { $inc: { stock: -change.delta } })
@@ -87,6 +96,25 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
 
     if (sale.creditDebtId !== undefined) {
       const debts = await getCollection<any>('debts')
+      const creditSaleDebt = await debts.findOne({ id: Number(sale.creditDebtId), saleId: id })
+      if (creditSaleDebt) {
+        if (Number(creditSaleDebt.paidAmount ?? 0) > 0 || Number(creditSaleDebt.amount ?? 0) < Number(creditSaleDebt.original ?? 0)) {
+          return NextResponse.json({ ok: false, error: 'A credit sale cannot be deleted after a customer payment has been recorded.' }, { status: 409 })
+        }
+        const deletedSale = await sales.deleteOne({ _id: sale._id })
+        if (!deletedSale.deletedCount) return NextResponse.json({ ok: false, error: 'Sale changed before it could be deleted.' }, { status: 409 })
+        const deletedDebt = await debts.deleteOne({ _id: creditSaleDebt._id })
+        if (!deletedDebt.deletedCount) {
+          const saleToRestore = { ...sale }
+          delete saleToRestore._id
+          await sales.insertOne(saleToRestore)
+          return NextResponse.json({ ok: false, error: 'The linked customer balance could not be deleted.' }, { status: 409 })
+        }
+        for (const item of sale.items ?? []) {
+          if (item.productId) await products.updateOne({ id: Number(item.productId) }, { $inc: { stock: Number(item.qty) } })
+        }
+        return NextResponse.json({ ok: true, deletedCreditSale: true })
+      }
       const debt = await debts.findOne({
         id: Number(sale.creditDebtId),
         $or: [{ paymentSaleIds: id }, { saleId: id }],
@@ -99,13 +127,21 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
       const nextBalance = oldBalance + paymentAmount
       const reopened = await debts.updateOne(
         { id: debt.id, $or: [{ paymentSaleIds: id }, { saleId: id }] },
-        { $set: { status: 'unpaid', amount: nextBalance, paidAmount: nextPaidAmount, paidAt: null } },
+        { $set: { status: 'unpaid', amount: nextBalance, paidAmount: nextPaidAmount, paidAt: null }, $pull: { paymentSaleIds: id } },
       )
       if (!reopened.modifiedCount) return NextResponse.json({ ok: false, error: 'Debt balance could not be restored.' }, { status: 409 })
       const deletedSettlement = await sales.deleteOne({ _id: sale._id })
       if (!deletedSettlement.deletedCount) {
         await debts.updateOne({ id: debt.id }, { $set: { status: debt.status, amount: oldBalance, paidAmount: oldPaidAmount, paidAt: debt.paidAt } })
         return NextResponse.json({ ok: false, error: 'The payment sale could not be reversed.' }, { status: 409 })
+      }
+      await (await getCollection<any>('cash_movements')).deleteOne({ id: `PAY-LEGACY-${id}` })
+      if (debt.saleId) {
+        await sales.updateOne({ id: debt.saleId }, { $set: {
+          paymentStatus: nextPaidAmount === 0 ? 'unpaid' : 'partial',
+          amountPaid: nextPaidAmount,
+          customerBalance: nextBalance,
+        } })
       }
       return NextResponse.json({ ok: true, reversedSettlement: true })
     }
@@ -125,6 +161,7 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
       for (const [productId, qty] of restored) await products.updateOne({ id: productId }, { $inc: { stock: -qty } })
       return NextResponse.json({ ok: false, error: 'Sale changed before it could be deleted.' }, { status: 409 })
     }
+    await (await getCollection<any>('cash_movements')).deleteOne({ id: `SALE-${id}` })
     return NextResponse.json({ ok: true })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unable to delete sale.'

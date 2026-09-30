@@ -65,8 +65,35 @@ export async function POST(request: Request) {
         const vat = Boolean(body.vat)
         const amount = subtotal * (vat ? 1.18 : 1)
         const description = String(body.description ?? `Credit sale: ${items.map((item) => item.name).join(', ')}`).trim()
-        const debt = { id, name, phone: body.phone ?? '', amount, original: amount, paidAmount: 0, kind: 'customer', due, status: 'unpaid', description, items, vat, createdAt: new Date() }
-        await debts.insertOne(debt)
+        const saleId = `CR-${id}-${Date.now()}`
+        const date = new Date().toISOString().slice(0, 10)
+        const profit = items.reduce((sum, item) => sum + (item.price - item.buy) * item.qty, 0)
+        const sale = {
+          id: saleId,
+          date,
+          customer: name,
+          items,
+          subtotal,
+          total: amount,
+          vatRate: vat ? 0.18 : 0,
+          vatAmount: amount - subtotal,
+          profit,
+          vat,
+          creditDebtId: id,
+          paymentStatus: 'unpaid',
+          amountPaid: 0,
+          customerBalance: amount,
+          createdAt: new Date(),
+        }
+        const debt = { id, name, phone: body.phone ?? '', amount, original: amount, paidAmount: 0, kind: 'customer', due, status: 'unpaid', description, items, vat, saleId, createdAt: new Date() }
+        const sales = await getCollection<any>('sales')
+        await sales.insertOne(sale)
+        try {
+          await debts.insertOne(debt)
+        } catch (error) {
+          await sales.deleteOne({ id: saleId })
+          throw error
+        }
         return NextResponse.json({ ok: true, debt })
       } catch (error) {
         for (const item of reserved.reverse()) await products.updateOne({ id: item.id }, { $inc: { stock: item.qty } })
