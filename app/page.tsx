@@ -1575,22 +1575,28 @@ function FinancePage({ debts, pettyCash, purchases, expenses, cashMovements, acc
   const [customerSearch, setCustomerSearch] = useState('')
   const [supplierSearch, setSupplierSearch] = useState('')
   const [pettyCashSearch, setPettyCashSearch] = useState('')
+  const [drawingSearch, setDrawingSearch] = useState('')
   const [expenseSearch, setExpenseSearch] = useState('')
   const [purchaseSearch, setPurchaseSearch] = useState('')
   const customerListRef = useRef<HTMLDivElement>(null)
   const supplierListRef = useRef<HTMLDivElement>(null)
   const pettyCashListRef = useRef<HTMLDivElement>(null)
+  const drawingListRef = useRef<HTMLDivElement>(null)
   const expenseListRef = useRef<HTMLDivElement>(null)
   const purchaseListRef = useRef<HTMLDivElement>(null)
   const visibleCustomers = customers.filter((entry: Debt) => `${entry.name} ${entry.phone ?? ''} ${entry.description ?? ''}`.toLowerCase().includes(customerSearch.toLowerCase()))
   const visibleSuppliers = suppliers.filter((entry: Debt) => `${entry.name} ${entry.phone ?? ''} ${entry.description ?? ''}`.toLowerCase().includes(supplierSearch.toLowerCase()))
-  const visiblePettyCash = pettyCash.filter((entry: PettyCash) => `${entry.reason} ${entry.category ?? ''} ${entry.type} ${entry.date} ${entry.amount}`.toLowerCase().includes(pettyCashSearch.trim().toLowerCase()))
+  const ownerDrawings = pettyCash.filter((entry: PettyCash) => entry.type === 'owner_drawing')
+  const pettyCashEntries = pettyCash.filter((entry: PettyCash) => entry.type !== 'owner_drawing')
+  const visiblePettyCash = pettyCashEntries.filter((entry: PettyCash) => `${entry.reason} ${entry.category ?? ''} ${entry.type} ${entry.date} ${entry.amount}`.toLowerCase().includes(pettyCashSearch.trim().toLowerCase()))
+  const visibleDrawings = ownerDrawings.filter((entry: PettyCash) => `${entry.reason} ${entry.category ?? ''} ${entry.date} ${entry.amount}`.toLowerCase().includes(drawingSearch.trim().toLowerCase()))
   const visibleExpenses = expenses.filter((entry: BusinessExpense) => `${entry.category} ${entry.description} ${entry.supplier} ${entry.date} ${entry.paymentStatus}`.toLowerCase().includes(expenseSearch.trim().toLowerCase()))
   const visiblePurchases = purchases.filter((entry: InventoryPurchase) => `${entry.supplier} ${entry.id} ${entry.date} ${entry.items.map((item) => item.name).join(' ')} ${entry.paymentMethod}`.toLowerCase().includes(purchaseSearch.trim().toLowerCase()))
   const visibleCashMovements = cashMovements.filter((entry: CashMovement) => `${entry.type} ${entry.account} ${entry.date} ${entry.reference} ${entry.amount}`.toLowerCase().includes(cashMovementSearch.trim().toLowerCase()))
   const pettyCashInflows = pettyCash.filter((entry: PettyCash) => ['owner_contribution', 'customer_payment', 'cash_in', 'other_income', 'bank_transfer_in', 'cash_transfer_in'].includes(entry.type)).reduce((sum: number, entry: PettyCash) => sum + Number(entry.amount), 0)
-  const pettyCashOutflows = pettyCash.filter((entry: PettyCash) => !['owner_contribution', 'customer_payment', 'cash_in', 'other_income', 'bank_transfer_in', 'cash_transfer_in'].includes(entry.type)).reduce((sum: number, entry: PettyCash) => sum + Number(entry.amount), 0)
-  const pettyCashAvailable = pettyCashInflows - pettyCashOutflows
+  const pettyCashOutflows = pettyCashEntries.filter((entry: PettyCash) => !['owner_contribution', 'customer_payment', 'cash_in', 'other_income', 'bank_transfer_in', 'cash_transfer_in'].includes(entry.type)).reduce((sum: number, entry: PettyCash) => sum + Number(entry.amount), 0)
+  const ownerDrawingTotal = ownerDrawings.reduce((sum: number, entry: PettyCash) => sum + Number(entry.amount), 0)
+  const pettyCashAvailable = pettyCashInflows - pettyCashOutflows - ownerDrawingTotal
 
   return (
     <>
@@ -1598,6 +1604,7 @@ function FinancePage({ debts, pettyCash, purchases, expenses, cashMovements, acc
       <div className="finance-actions">
         <button className="outline-btn" onClick={() => setShowDebt(true)}><Plus /> Add debt</button>
         <button className="outline-btn" onClick={() => setShowExpense(true)}><Plus /> Record expense</button>
+        <button className="outline-btn" onClick={onRecordDrawing}><Users /> Owner drawing</button>
         <button className="primary-btn compact" onClick={() => setShowPurchase(true)}><Package /> Receive inventory</button>
       </div>
       <div className="finance-summary">
@@ -1712,11 +1719,10 @@ function FinancePage({ debts, pettyCash, purchases, expenses, cashMovements, acc
             <span className="petty-cash-mark"><Wallet /></span>
             <div>
               <h2>Petty cash</h2>
-              <p>Receipts and business or personal withdrawals</p>
+              <p>Cash receipts and business spending</p>
             </div>
           </div>
           <div className="petty-cash-actions">
-            <button className="outline-btn" onClick={onRecordDrawing}><Users /> Record owner drawing</button>
             <button className="outline-btn" onClick={onWithdrawPettyCash}><Wallet /> Withdraw from Petty Cash</button>
             <button className="primary-btn compact" onClick={onReceivePettyCash}><Plus /> Add Money to Petty Cash</button>
           </div>
@@ -1725,10 +1731,10 @@ function FinancePage({ debts, pettyCash, purchases, expenses, cashMovements, acc
           <div><span>Available balance</span><strong>{money(pettyCashAvailable)}</strong></div>
           <div><span>Total added</span><strong className="cash-in-amount">+{money(pettyCashInflows)}</strong></div>
           <div><span>Total used</span><strong className="negative">−{money(pettyCashOutflows)}</strong></div>
-          <span className="petty-cash-count">{pettyCash.length} {pettyCash.length === 1 ? 'expense' : 'expenses'}</span>
+          <span className="petty-cash-count">{pettyCashEntries.length} {pettyCashEntries.length === 1 ? 'entry' : 'entries'}</span>
         </div>
-        <BrowseControls count={pettyCash.length} query={pettyCashSearch} onQueryChange={setPettyCashSearch} scrollRef={pettyCashListRef} placeholder="Search petty cash and drawings..." alwaysVisible />
-        <div className={`petty-cash-ledger ${pettyCash.length >= 3 ? 'side-scroll-list' : ''}`} ref={pettyCashListRef}>
+        <BrowseControls count={pettyCashEntries.length} query={pettyCashSearch} onQueryChange={setPettyCashSearch} scrollRef={pettyCashListRef} placeholder="Search petty cash..." alwaysVisible />
+        <div className={`petty-cash-ledger ${pettyCashEntries.length > 3 ? 'side-scroll-list' : ''}`} ref={pettyCashListRef}>
           {visiblePettyCash.length ? visiblePettyCash.map((entry: PettyCash) => (
             <div className="petty-cash-entry" key={entry.id}>
               <span className="expense-indicator"><Wallet /></span>
@@ -1736,7 +1742,31 @@ function FinancePage({ debts, pettyCash, purchases, expenses, cashMovements, acc
               <strong className={`expense-amount ${['owner_contribution', 'customer_payment', 'cash_in', 'other_income', 'bank_transfer_in', 'cash_transfer_in'].includes(entry.type) ? 'cash-in-amount' : ''}`}>{['owner_contribution', 'customer_payment', 'cash_in', 'other_income', 'bank_transfer_in', 'cash_transfer_in'].includes(entry.type) ? '+' : '−'}{money(entry.amount)}</strong>
               <span className="transaction-row-actions"><button className="icon-btn" type="button" title="Edit petty-cash transaction" aria-label={`Edit petty-cash transaction ${entry.reason}`} onClick={() => onEditPettyCash(entry)}><Pencil /></button><button className="icon-btn danger-icon" type="button" title="Delete petty-cash transaction" aria-label={`Delete petty-cash transaction ${entry.reason}`} onClick={() => void onDeletePettyCash(entry)}><Trash2 /></button></span>
             </div>
-          )) : pettyCash.length ? <div className="empty-state">No matching expenses.</div> : <div className="petty-cash-empty"><Wallet /><span>No expenses recorded yet</span><small>Your petty cash entries will appear here.</small></div>}
+          )) : pettyCashEntries.length ? <div className="empty-state">No matching petty-cash entries.</div> : <div className="petty-cash-empty"><Wallet /><span>No petty-cash activity yet</span><small>Cash receipts and business spending will appear here.</small></div>}
+        </div>
+      </div>
+
+      <div className="panel owner-drawings-panel">
+        <div className="panel-head">
+          <div className="petty-cash-title">
+            <span className="petty-cash-mark"><Users /></span>
+            <div><h2>Owner drawings</h2><p>Personal withdrawals, listed separately from petty-cash activity</p></div>
+          </div>
+          <span className="petty-cash-count">{ownerDrawings.length} {ownerDrawings.length === 1 ? 'drawing' : 'drawings'}</span>
+        </div>
+        <div className="petty-cash-summary">
+          <div><span>Total drawings</span><strong className="negative">−{money(ownerDrawingTotal)}</strong></div>
+        </div>
+        <BrowseControls count={ownerDrawings.length} query={drawingSearch} onQueryChange={setDrawingSearch} scrollRef={drawingListRef} placeholder="Search owner drawings..." alwaysVisible />
+        <div className={`owner-drawings-ledger ${ownerDrawings.length > 3 ? 'side-scroll-list' : ''}`} ref={drawingListRef}>
+          {visibleDrawings.length ? visibleDrawings.map((entry: PettyCash) => (
+            <div className="petty-cash-entry" key={entry.id}>
+              <span className="expense-indicator"><Users /></span>
+              <span className="expense-description"><strong>{entry.reason}</strong><small>{entry.category || 'Owner drawing'} · {new Date(`${entry.date}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} · {entry.user ?? 'unknown'} · Ref {entry.reference || entry.id}</small></span>
+              <strong className="expense-amount">−{money(entry.amount)}</strong>
+              <span className="transaction-row-actions"><button className="icon-btn" type="button" title="Edit owner drawing" aria-label={`Edit owner drawing ${entry.reason}`} onClick={() => onEditPettyCash(entry)}><Pencil /></button><button className="icon-btn danger-icon" type="button" title="Delete owner drawing" aria-label={`Delete owner drawing ${entry.reason}`} onClick={() => void onDeletePettyCash(entry)}><Trash2 /></button></span>
+            </div>
+          )) : ownerDrawings.length ? <div className="empty-state">No matching owner drawings.</div> : <div className="petty-cash-empty"><Users /><span>No owner drawings recorded</span><small>Use the Owner drawing button above to record a personal withdrawal.</small></div>}
         </div>
       </div>
     </>

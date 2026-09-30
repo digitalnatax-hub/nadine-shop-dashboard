@@ -144,6 +144,10 @@ body { background:linear-gradient(135deg,#f8f9fa 0%,#eef5f5 100%); }
 .petty-cash-summary > div strong { margin-top:4px; color:var(--foreground); font-size:20px; font-variant-numeric:tabular-nums; }
 .petty-cash-count { padding:5px 9px; border-radius:999px; color:var(--primary); background:#edf4f7; font-size:10px; font-weight:800; white-space:nowrap; }
 .petty-cash-ledger { border-top:1px solid #edf1f3; }
+.owner-drawings-ledger { border-top:1px solid #edf1f3; }
+.owner-drawings-ledger.side-scroll-list { max-height:190px; overflow-y:scroll; }
+.owner-drawings-panel { margin-top:18px; overflow:hidden; }
+.owner-drawings-panel > .panel-head { padding-bottom:14px; border-bottom:1px solid #edf1f3; }
 .petty-cash-entry { display:grid; grid-template-columns:34px minmax(0,1fr) auto; align-items:center; gap:11px; min-height:62px; border-bottom:1px solid #edf1f3; }
 .petty-cash-entry:last-child { border-bottom:0; }
 .expense-indicator { width:30px; height:30px; display:grid; place-items:center; border-radius:8px; color:var(--red); background:#fff0ee; }
@@ -266,7 +270,7 @@ body { background:linear-gradient(135deg,#f8f9fa 0%,#eef5f5 100%); }
 .sale-item-list li small { flex:none; color:var(--muted); font-size:10px; white-space:nowrap; }
 @media(max-width:720px){ .sales-history-scroll.is-scrollable { max-height:340px; } .sale-item-list li { min-width:120px; } }
 
-.finance-actions { display:flex; justify-content:flex-end; gap:9px; margin:-8px 0 18px; }
+.finance-actions { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:9px; margin:-8px 0 18px; }
 .finance-actions .outline-btn,.finance-actions .primary-btn { min-height:40px; }
 .inventory-purchase-history { padding:18px; margin:18px 0; }
 .inventory-purchase-history .panel-head { padding-bottom:12px; border-bottom:1px solid #edf1f3; }
@@ -318,7 +322,7 @@ body { background:linear-gradient(135deg,#f8f9fa 0%,#eef5f5 100%); }
 .opening-stock-payment .payment-choice { margin:13px 0 8px; }
 .opening-stock-field { display:grid; gap:6px; color:var(--foreground); font-size:11px; font-weight:700; }
 .opening-stock-field input,.opening-stock-field select { min-width:0; height:40px; padding:0 10px; border:1px solid var(--border); border-radius:8px; color:var(--foreground); background:#fff; }
-@media(max-width:720px){ .finance-actions { justify-content:stretch; margin-top:0; } .finance-actions > * { flex:1; justify-content:center; } .purchase-history-row { grid-template-columns:1fr 1fr auto; gap:8px 12px; } .purchase-history-row > div { grid-column:1/-1; } .purchase-history-row > span small { text-align:left; } .business-expense-row { grid-template-columns:minmax(0,1fr) auto; gap:8px; } .business-expense-row > span:first-child { grid-column:1/-1; } .purchase-add-row { align-items:stretch; flex-wrap:wrap; } .purchase-add-row label { flex-basis:100%; } .purchase-add-row .outline-btn { flex:1; padding:8px; font-size:11px; justify-content:center; } .purchase-line { grid-template-columns:1fr 1fr 32px; } .purchase-line > strong { grid-column:1/-1; } .purchase-line label { min-width:0; } }
+@media(max-width:720px){ .finance-actions { justify-content:stretch; margin-top:0; } .finance-actions > * { flex:1 1 calc(50% - 9px); justify-content:center; } .purchase-history-row { grid-template-columns:1fr 1fr auto; gap:8px 12px; } .purchase-history-row > div { grid-column:1/-1; } .purchase-history-row > span small { text-align:left; } .business-expense-row { grid-template-columns:minmax(0,1fr) auto; gap:8px; } .business-expense-row > span:first-child { grid-column:1/-1; } .purchase-add-row { align-items:stretch; flex-wrap:wrap; } .purchase-add-row label { flex-basis:100%; } .purchase-add-row .outline-btn { flex:1; padding:8px; font-size:11px; justify-content:center; } .purchase-line { grid-template-columns:1fr 1fr 32px; } .purchase-line > strong { grid-column:1/-1; } .purchase-line label { min-width:0; } }
 
 .account-movements-panel { padding:19px; margin:18px 0; overflow:hidden; }
 .account-movements-header { display:flex; align-items:center; justify-content:space-between; gap:14px; padding-bottom:14px; border-bottom:1px solid #e9eff0; }
