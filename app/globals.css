@@ -148,6 +148,7 @@ body { background:linear-gradient(135deg,#f8f9fa 0%,#eef5f5 100%); }
 .owner-drawings-ledger.side-scroll-list { max-height:190px; overflow-y:scroll; }
 .owner-drawings-panel { margin-top:18px; overflow:hidden; }
 .owner-drawings-panel > .panel-head { padding-bottom:14px; border-bottom:1px solid #edf1f3; }
+.owner-drawings-actions { display:flex; align-items:center; gap:8px; }
 .petty-cash-entry { display:grid; grid-template-columns:34px minmax(0,1fr) auto; align-items:center; gap:11px; min-height:62px; border-bottom:1px solid #edf1f3; }
 .petty-cash-entry:last-child { border-bottom:0; }
 .expense-indicator { width:30px; height:30px; display:grid; place-items:center; border-radius:8px; color:var(--red); background:#fff0ee; }

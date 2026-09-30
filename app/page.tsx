@@ -1604,7 +1604,7 @@ function FinancePage({ debts, pettyCash, purchases, expenses, cashMovements, acc
       <div className="finance-actions">
         <button className="outline-btn" onClick={() => setShowDebt(true)}><Plus /> Add debt</button>
         <button className="outline-btn" onClick={() => setShowExpense(true)}><Plus /> Record expense</button>
-        <button className="outline-btn" onClick={onRecordDrawing}><Users /> Owner drawing</button>
+        <button className="outline-btn" onClick={onRecordDrawing}><Users /> Add drawing</button>
         <button className="primary-btn compact" onClick={() => setShowPurchase(true)}><Package /> Receive inventory</button>
       </div>
       <div className="finance-summary">
@@ -1752,7 +1752,10 @@ function FinancePage({ debts, pettyCash, purchases, expenses, cashMovements, acc
             <span className="petty-cash-mark"><Users /></span>
             <div><h2>Owner drawings</h2><p>Personal withdrawals, listed separately from petty-cash activity</p></div>
           </div>
-          <span className="petty-cash-count">{ownerDrawings.length} {ownerDrawings.length === 1 ? 'drawing' : 'drawings'}</span>
+          <span className="owner-drawings-actions">
+            <button className="primary-btn compact" type="button" onClick={onRecordDrawing}><Plus /> Add drawing</button>
+            <span className="petty-cash-count">{ownerDrawings.length} {ownerDrawings.length === 1 ? 'drawing' : 'drawings'}</span>
+          </span>
         </div>
         <div className="petty-cash-summary">
           <div><span>Total drawings</span><strong className="negative">−{money(ownerDrawingTotal)}</strong></div>
@@ -2523,7 +2526,7 @@ function PettyCashModal({ action, close, onSave }: { action: 'receive' | 'withdr
         <label>Date<input type="date" value={date} onChange={(event) => setDate(event.target.value)} /></label>
         {!receiving && ['expense', 'other_expense'].includes(type) && <label>VAT included in amount<input type="number" min="0" max={amount || undefined} value={vatAmount} onChange={(event) => setVatAmount(event.target.value)} /></label>}
         {!receiving && type === 'transfer' && <label>Transfer destination<select value={transferAccount} onChange={(event) => setTransferAccount(event.target.value)}><option value="cash">Main cash</option><option value="bank">Bank</option><option value="mobile_money">Mobile Money</option><option value="other">Other</option></select></label>}
-        <label>{receiving ? 'Source / reason' : 'Purpose / explanation'}<input value={reason} onChange={(event) => setReason(event.target.value)} placeholder={receiving ? 'e.g. Owner added working cash' : type === 'owner_drawing' ? 'Owner personal use' : 'e.g. Bought cleaning materials'} /></label>
+        <label>{receiving ? 'Source / reason' : action === 'drawing' ? 'Reason for withdrawal' : 'Purpose / explanation'}<input value={reason} onChange={(event) => setReason(event.target.value)} placeholder={receiving ? 'e.g. Owner added working cash' : type === 'owner_drawing' ? 'e.g. Personal use' : 'e.g. Bought cleaning materials'} /></label>
       </div>
       <button className="primary-btn full" disabled={!type || !amount || Number(amount) <= 0 || !reason.trim()} onClick={() => void save()}>{receiving ? 'Add money to petty cash' : type === 'owner_drawing' ? 'Save personal withdrawal' : type === 'transfer' ? 'Record cash transfer' : 'Save business withdrawal'} <Wallet /></button>
     </Modal>
