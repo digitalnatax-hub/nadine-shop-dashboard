@@ -284,6 +284,7 @@ body { background:linear-gradient(135deg,#f8f9fa 0%,#eef5f5 100%); }
 .purchase-add-row label { display:grid; flex:1; gap:7px; color:var(--foreground); font-size:12px; font-weight:700; }
 .purchase-add-row select,.purchase-line input,.purchase-payment-fields input,.purchase-payment-fields select { min-width:0; height:40px; border:1px solid var(--border); border-radius:8px; padding:0 10px; background:#fff; color:var(--foreground); }
 .purchase-lines { max-height:270px; overflow-y:auto; border-top:1px solid #edf1f3; border-bottom:1px solid #edf1f3; }
+.purchase-item-feedback { min-height:28px; display:flex; align-items:center; margin:6px 0; color:var(--teal); font-size:11px; font-weight:700; }
 .purchase-line { display:grid; grid-template-columns:minmax(120px,1fr) minmax(90px,.55fr) minmax(100px,.65fr) 34px; align-items:end; gap:10px; padding:12px 2px; border-bottom:1px solid #edf1f3; }
 .purchase-line > strong { align-self:center; min-width:0; color:var(--foreground); font-size:12px; }
 .purchase-line > strong small { display:block; margin-top:4px; color:var(--muted); font-size:10px; font-weight:500; }

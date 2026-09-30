@@ -2214,15 +2214,34 @@ function InventoryPurchaseModal({ products, close, onSave }: { products: Product
   const [paidAmount, setPaidAmount] = useState('0')
   const [paymentMethod, setPaymentMethod] = useState('cash')
   const [error, setError] = useState('')
+  const [itemMessage, setItemMessage] = useState('Select a product to enable Add item.')
   const [saving, setSaving] = useState(false)
+  const purchaseLinesRef = useRef<HTMLDivElement>(null)
+  const addedProductId = useRef<number | null>(null)
   const subtotal = items.reduce((sum, item) => sum + item.qty * item.unitCost, 0)
   const total = subtotal + Number(vatAmount || 0)
 
+  useEffect(() => {
+    if (addedProductId.current === null) return
+    const row = purchaseLinesRef.current?.querySelector(`[data-product-id="${addedProductId.current}"]`)
+    row?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    addedProductId.current = null
+  }, [items])
+
   const addItem = () => {
     const product = products.find((entry) => entry.id === Number(productId))
-    if (!product || items.some((item) => item.productId === product.id)) return
+    if (!product) {
+      setItemMessage('Choose an available product before adding it.')
+      return
+    }
+    if (items.some((item) => item.productId === product.id)) {
+      setItemMessage(`${product.name} is already in this purchase.`)
+      return
+    }
+    addedProductId.current = product.id
     setItems((current) => [...current, { productId: product.id, qty: 1, unitCost: product.buy }])
     setProductId('')
+    setItemMessage(`${product.name} added to this purchase.`)
   }
 
   const save = async () => {
@@ -2243,14 +2262,18 @@ function InventoryPurchaseModal({ products, close, onSave }: { products: Product
         <label>Purchase date<input type="date" value={date} onChange={(event) => setDate(event.target.value)} /></label>
       </div>
       <div className="purchase-add-row">
-        <label>Product<select value={productId} onChange={(event) => setProductId(event.target.value)}><option value="">Select product</option>{products.filter((product) => !items.some((item) => item.productId === product.id)).map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}</select></label>
+        <label>Product<select value={productId} onChange={(event) => {
+          setProductId(event.target.value)
+          setItemMessage(event.target.value ? 'Ready to add selected product.' : 'Select a product to enable Add item.')
+        }}><option value="">Select product</option>{products.filter((product) => !items.some((item) => item.productId === product.id)).map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}</select></label>
         <button className="outline-btn" type="button" disabled={!productId} onClick={addItem}><Plus /> Add item</button>
       </div>
-      <div className="purchase-lines">
+      <div className="purchase-item-feedback" role="status">{itemMessage}</div>
+      <div className="purchase-lines" ref={purchaseLinesRef}>
         {items.map((item) => {
           const product = products.find((entry) => entry.id === item.productId)
           if (!product) return null
-          return <div className="purchase-line" key={item.productId}>
+          return <div className="purchase-line" data-product-id={item.productId} key={item.productId}>
             <strong>{product.name}<small>Current stock: {formatQuantity(product.stock, product.unit)}</small></strong>
             <label>Quantity<input type="number" min="0.01" step={getQuantityStep(product.unit)} value={item.qty} onChange={(event) => setItems((current) => current.map((entry) => entry.productId === item.productId ? { ...entry, qty: Number(event.target.value) } : entry))} /></label>
             <label>Unit cost<input type="number" min="0" step="1" value={item.unitCost} onChange={(event) => setItems((current) => current.map((entry) => entry.productId === item.productId ? { ...entry, unitCost: Number(event.target.value) } : entry))} /></label>
