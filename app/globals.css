@@ -199,7 +199,7 @@ body { background:linear-gradient(135deg,#f8f9fa 0%,#eef5f5 100%); }
 .debt-cleared-note { display:inline-flex; align-items:center; gap:4px; color:var(--green); font-size:10px; font-weight:800; white-space:nowrap; }
 .debt-row .settle-debt { align-self:flex-end; }
 @media(max-width:720px){ .debt-row { align-items:flex-start; gap:8px; } .debt-avatar { flex:none; } .debt-info { min-width:0; } .debt-amount { min-width:96px; } .debt-payment-progress { padding:8px; } .debt-payment-meta { align-items:flex-start; flex-direction:column; gap:2px; } .debt-payment-meta > strong { text-align:left; } }
-.petty-cash-ledger.side-scroll-list { max-height:245px; overflow-y:scroll; }
+.petty-cash-ledger.side-scroll-list { max-height:190px; overflow-y:scroll; }
 .product-performance-panel { padding:0; overflow:hidden; }
 .performance-header { display:flex; align-items:center; justify-content:space-between; gap:22px; padding:24px 26px 20px; border-bottom:1px solid #e8eef0; background:linear-gradient(110deg,#fff 0%,#f4faf9 100%); }
 .performance-header h2 { margin:7px 0 4px; color:var(--foreground); font-size:20px; }
