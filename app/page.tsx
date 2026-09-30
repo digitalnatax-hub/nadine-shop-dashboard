@@ -1423,6 +1423,9 @@ function SalesPage({ sales, products, setShowSale, setReceipt, setEditingSale, d
           </tbody>
           </table>
         </div>
+        <div className="document-grid" style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+          <div><span>Total sales</span><strong>{money(visibleSales.reduce((sum: number, entry: Sale) => sum + Number(entry.total ?? 0), 0))}</strong></div>
+        </div>
       </div>
     </>
   )
@@ -1902,16 +1905,6 @@ function Reports({ sales, products, pettyCash, purchases, expenses, totals }: an
             <div><span>Other business expenses</span><strong>−{money(report.otherBusinessExpenses)}</strong></div>
             <div><span>Other business income</span><strong>+{money(report.otherBusinessIncome)}</strong></div>
             <div><span>Net profit</span><strong className={report.netProfit >= 0 ? 'green-text' : 'negative'}>{money(report.netProfit)}</strong></div>
-          </div>
-        </section>
-        <section className="statement-section">
-          <h3>Tax and owner activity</h3>
-          <div className="document-grid">
-            <div><span>Output VAT collected</span><strong>{money(report.vat)}</strong></div>
-            <div><span>Input VAT</span><strong>{report.vatConfigured ? `−${money(report.inputVat)}` : 'VAT not configured'}</strong></div>
-            <div><span>Net VAT payable / credit</span><strong>{report.vatConfigured ? report.netVat >= 0 ? money(report.netVat) + ' payable' : money(Math.abs(report.netVat)) + ' credit' : 'VAT not configured'}</strong></div>
-            <div><span>Owner capital contributions (selected period)</span><strong>{money(report.ownerContributions)}</strong><small>Capital, not sales revenue.</small></div>
-            <div><span>Owner personal withdrawals (selected period)</span><strong>−{money(report.ownerDrawings)}</strong><small>Not included in expenses or net profit.</small></div>
           </div>
         </section>
         <section className="statement-section">
