@@ -8,11 +8,10 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
     const debts = await getCollection<any>('debts')
     const result = await debts.deleteOne({
       id: debtId,
-      kind: 'customer',
       $or: [{ status: 'paid' }, { amount: { $lte: 0 } }],
     })
     if (!result.deletedCount) {
-      return NextResponse.json({ ok: false, error: 'Only fully paid customer debts can be deleted.' }, { status: 409 })
+      return NextResponse.json({ ok: false, error: 'Only fully paid debts can be deleted.' }, { status: 409 })
     }
     return NextResponse.json({ ok: true })
   } catch (error) {
@@ -21,7 +20,7 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
   }
 }
 
-export async function PATCH(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   let debtId: number | undefined
   let claimedDebt: any
   let paymentId: string | undefined
@@ -35,6 +34,38 @@ export async function PATCH(_request: Request, { params }: { params: Promise<{ i
     const debts = await getCollection<any>('debts')
     const debt = await debts.findOne({ id: debtId })
     if (!debt) return NextResponse.json({ ok: false, error: 'Debt record not found.' }, { status: 404 })
+
+    const hasPaymentPayload = body.paymentMethod !== undefined || body.amount !== undefined && Object.prototype.hasOwnProperty.call(body, 'paymentMethod')
+    if (!hasPaymentPayload) {
+      const updates: Record<string, any> = {}
+      const name = String(body.name ?? debt.name ?? '').trim()
+      const phone = String(body.phone ?? debt.phone ?? '').trim()
+      const due = String(body.due ?? debt.due ?? new Date().toISOString().slice(0, 10))
+      const kind = String(body.kind ?? debt.kind ?? 'customer')
+      const description = String(body.description ?? debt.description ?? '').trim()
+
+      if (!name) return NextResponse.json({ ok: false, error: 'Debt name is required.' }, { status: 400 })
+      if (!['customer', 'supplier'].includes(kind)) return NextResponse.json({ ok: false, error: 'Unsupported debt type.' }, { status: 400 })
+
+      updates.name = name
+      updates.phone = phone || ''
+      updates.due = due
+      updates.kind = kind
+      updates.description = description || ''
+      if (body.amount !== undefined) {
+        const nextAmount = Number(body.amount)
+        if (!Number.isFinite(nextAmount) || nextAmount < 0) return NextResponse.json({ ok: false, error: 'Outstanding balance must be a valid non-negative number.' }, { status: 400 })
+        updates.amount = nextAmount
+        updates.original = Number(debt.original ?? nextAmount)
+        if (Number(debt.paidAmount ?? 0) > nextAmount) {
+          updates.paidAmount = Math.min(Number(debt.paidAmount ?? 0), nextAmount)
+        }
+      }
+
+      await debts.updateOne({ id: debtId }, { $set: updates })
+      return NextResponse.json({ ok: true, debt: { ...debt, ...updates } })
+    }
+
     const amountDue = Number(debt.amount ?? 0)
     const paymentAmount = Number(body.amount ?? amountDue)
     const paymentMethod = String(body.paymentMethod ?? 'cash')

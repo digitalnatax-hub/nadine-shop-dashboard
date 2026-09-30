@@ -112,6 +112,16 @@ type CashMovement = {
   reference: string
 }
 
+type DebtPayment = {
+  id: string
+  debtId: number
+  kind: 'customer' | 'supplier'
+  amount: number
+  paymentMethod: string
+  date: string
+  reference?: string
+}
+
 type BusinessExpense = {
   id: string
   date: string
@@ -166,6 +176,7 @@ export default function Page() {
   const [pettyCash, setPettyCash] = useState<PettyCash[]>([])
   const [purchases, setPurchases] = useState<InventoryPurchase[]>([])
   const [cashMovements, setCashMovements] = useState<CashMovement[]>([])
+  const [debtPayments, setDebtPayments] = useState<DebtPayment[]>([])
   const [accountBalances, setAccountBalances] = useState({ cash: 0, bank: 0, mobile_money: 0, other: 0 })
   const [businessExpenses, setBusinessExpenses] = useState<BusinessExpense[]>([])
   const [showProduct, setShowProduct] = useState(false)
@@ -180,6 +191,11 @@ export default function Page() {
   const [receipt, setReceipt] = useState<Sale | null>(null)
   const [editingSale, setEditingSale] = useState<Sale | null>(null)
   const [payingDebt, setPayingDebt] = useState<Debt | null>(null)
+  const [editingDebt, setEditingDebt] = useState<Debt | null>(null)
+  const [editingExpense, setEditingExpense] = useState<BusinessExpense | null>(null)
+  const [editingPurchase, setEditingPurchase] = useState<InventoryPurchase | null>(null)
+  const [editingPettyCash, setEditingPettyCash] = useState<PettyCash | null>(null)
+  const [editingDebtPayment, setEditingDebtPayment] = useState<DebtPayment | null>(null)
   const [cashMovementSearch, setCashMovementSearch] = useState('')
   const [search, setSearch] = useState('')
   const [includeVat, setIncludeVat] = useState(true)
@@ -202,6 +218,7 @@ export default function Page() {
     setPettyCash(payload.pettyCash ?? [])
     setPurchases(payload.purchases ?? [])
     setCashMovements(payload.cashMovements ?? [])
+    setDebtPayments(payload.debtPayments ?? [])
     setAccountBalances(payload.accountBalances ?? { cash: 0, bank: 0, mobile_money: 0, other: 0 })
     setBusinessExpenses(payload.expenses ?? [])
   }
@@ -447,8 +464,20 @@ export default function Page() {
     setPayingDebt(null)
   }
 
+  const updateDebtPayment = async (payment: DebtPayment, input: { amount: number; paymentMethod: string; date: string }) => {
+    const response = await fetch(`/api/debt-payments/${encodeURIComponent(payment.id)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...input, user: username }),
+    })
+    const payload = await response.json()
+    if (!response.ok || !payload.ok) throw new Error(payload.error ?? 'Unable to update payment.')
+    await loadData()
+    setEditingDebtPayment(null)
+  }
+
   const deleteDebt = async (debt: Debt) => {
-    if (!window.confirm(`Delete ${debt.name} from customer debtors? This cannot be undone.`)) return
+    if (!window.confirm(`Delete ${debt.name} from the debt ledger? This cannot be undone.`)) return
     const response = await fetch(`/api/debts/${debt.id}`, { method: 'DELETE' })
     const payload = await response.json()
     if (!response.ok || !payload.ok) {
@@ -471,7 +500,7 @@ export default function Page() {
     }
 
     await loadData()
-    setShowProduct(false)
+    return payload.product as Product
   }
 
   const updateProduct = async (id: number, input: Omit<Product, 'id'>) => {
@@ -537,6 +566,27 @@ export default function Page() {
     setShowDebt(false)
   }
 
+  const updateDebt = async (id: number, input: { name: string; phone?: string; amount?: number; kind: 'customer' | 'supplier'; due: string; description?: string }) => {
+    const response = await fetch(`/api/debts/${encodeURIComponent(String(id))}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: input.name,
+        phone: input.phone ?? '',
+        amount: input.amount,
+        kind: input.kind,
+        due: input.due,
+        description: input.description,
+      }),
+    })
+    const payload = await response.json()
+    if (!response.ok || !payload.ok) {
+      throw new Error(payload.error ?? 'Unable to update debt record.')
+    }
+    await loadData()
+    setEditingDebt(null)
+  }
+
   const createPettyCash = async (input: { amount: number; reason: string; date: string; type: PettyCash['type']; category: string; vatAmount: number; paymentMethod: string }) => {
     const response = await fetch('/api/petty-cash', {
       method: 'POST',
@@ -546,6 +596,29 @@ export default function Page() {
     const payload = await response.json()
     if (!response.ok || !payload.ok) {
       throw new Error(payload.error ?? 'Unable to save petty cash record.')
+    }
+    await loadData()
+  }
+
+  const updatePettyCash = async (entry: PettyCash, input: { amount: number; reason: string; date: string; category: string; vatAmount: number }) => {
+    const response = await fetch(`/api/petty-cash/${encodeURIComponent(entry.id)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    })
+    const payload = await response.json()
+    if (!response.ok || !payload.ok) throw new Error(payload.error ?? 'Unable to update petty-cash transaction.')
+    await loadData()
+    setEditingPettyCash(null)
+  }
+
+  const deletePettyCash = async (entry: PettyCash) => {
+    if (!window.confirm(`Delete petty-cash transaction "${entry.reason}"? Related balances will be reversed.`)) return
+    const response = await fetch(`/api/petty-cash/${encodeURIComponent(entry.id)}`, { method: 'DELETE' })
+    const payload = await response.json()
+    if (!response.ok || !payload.ok) {
+      setLoginError(payload.error ?? 'Unable to delete petty-cash transaction.')
+      return
     }
     await loadData()
   }
@@ -562,6 +635,29 @@ export default function Page() {
     setShowPurchase(false)
   }
 
+  const updateInventoryPurchase = async (id: string, input: { supplier: string; date: string; items: { productId: number; qty: number; unitCost: number }[]; vatAmount: number; paidAmount: number; paymentMethod: string }) => {
+    const response = await fetch(`/api/purchases/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...input, user: username }),
+    })
+    const payload = await response.json()
+    if (!response.ok || !payload.ok) throw new Error(payload.error ?? 'Unable to update inventory purchase.')
+    await loadData()
+    setEditingPurchase(null)
+  }
+
+  const deleteInventoryPurchase = async (purchase: InventoryPurchase) => {
+    if (!window.confirm(`Delete inventory purchase ${purchase.id}? Stock and the associated payable/payment will be reversed.`)) return
+    const response = await fetch(`/api/purchases/${encodeURIComponent(purchase.id)}`, { method: 'DELETE' })
+    const payload = await response.json()
+    if (!response.ok || !payload.ok) {
+      setLoginError(payload.error ?? 'Unable to delete inventory purchase.')
+      return
+    }
+    await loadData()
+  }
+
   const createBusinessExpense = async (input: { date: string; category: string; description: string; supplier: string; amountExclVat: number; vatAmount: number; paymentStatus: 'paid' | 'unpaid'; paymentMethod: string }) => {
     const response = await fetch('/api/expenses', {
       method: 'POST',
@@ -572,6 +668,29 @@ export default function Page() {
     if (!response.ok || !payload.ok) throw new Error(payload.error ?? 'Unable to record business expense.')
     await loadData()
     setShowExpense(false)
+  }
+
+  const updateBusinessExpense = async (id: string, input: { date: string; category: string; description: string; supplier: string; amountExclVat: number; vatAmount: number; paymentStatus: 'paid' | 'unpaid'; paymentMethod: string }) => {
+    const response = await fetch(`/api/expenses/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    })
+    const payload = await response.json()
+    if (!response.ok || !payload.ok) throw new Error(payload.error ?? 'Unable to update business expense.')
+    await loadData()
+    setEditingExpense(null)
+  }
+
+  const deleteBusinessExpense = async (expense: BusinessExpense) => {
+    if (!window.confirm(`Delete expense "${expense.description}"? Its recorded balances will be reversed.`)) return
+    const response = await fetch(`/api/expenses/${encodeURIComponent(expense.id)}`, { method: 'DELETE' })
+    const payload = await response.json()
+    if (!response.ok || !payload.ok) {
+      setLoginError(payload.error ?? 'Unable to delete business expense.')
+      return
+    }
+    await loadData()
   }
 
   const deleteCashMovement = async (movement: CashMovement) => {
@@ -590,6 +709,30 @@ export default function Page() {
     await loadData()
   }
 
+  const editCashMovement = (movement: CashMovement) => {
+    if (movement.type === 'sale_receipt') {
+      const sale = sales.find((entry) => entry.id === movement.reference)
+      if (sale && !sale.creditDebtId) return setEditingSale(sale)
+    }
+    if (movement.type === 'inventory_purchase_payment') {
+      const purchase = purchases.find((entry) => entry.id === movement.reference)
+      if (purchase) return setEditingPurchase(purchase)
+    }
+    if (movement.type === 'business_expense_payment') {
+      const expense = businessExpenses.find((entry) => entry.id === movement.reference)
+      if (expense) return setEditingExpense(expense)
+    }
+    if (movement.type === 'petty_cash_transfer') {
+      const entry = pettyCash.find((candidate) => candidate.id === movement.reference)
+      if (entry) return setEditingPettyCash(entry)
+    }
+    if (movement.type === 'customer_receipt' || movement.type === 'supplier_payment') {
+      const payment = debtPayments.find((entry) => entry.id === movement.reference)
+      if (payment) return setEditingDebtPayment(payment)
+    }
+    setLoginError('This activity row has no editable source record.')
+  }
+
   const handleLogout = () => {
     setLoggedIn(false)
     setProducts([])
@@ -598,6 +741,7 @@ export default function Page() {
     setPettyCash([])
     setPurchases([])
     setCashMovements([])
+    setDebtPayments([])
     setAccountBalances({ cash: 0, bank: 0, mobile_money: 0, other: 0 })
     setBusinessExpenses([])
     setPage('Dashboard')
@@ -773,7 +917,7 @@ export default function Page() {
           {page === 'Inventory' && (
             <Inventory products={products} setShowProduct={setShowProduct} setEditingProduct={setEditingProduct} deleteProduct={deleteProduct} search={search} setSearch={setSearch} />
           )}
-          {page === 'Finances' && <FinancePage debts={debts} pettyCash={pettyCash} purchases={purchases} expenses={businessExpenses} cashMovements={cashMovements} accountBalances={accountBalances} cashMovementSearch={cashMovementSearch} setCashMovementSearch={setCashMovementSearch} onDeleteMovement={deleteCashMovement} setShowDebt={setShowDebt} setShowPurchase={() => setShowPurchase(true)} setShowExpense={() => setShowExpense(true)} onReceivePettyCash={() => { setPettyCashAction('receive'); setShowPettyCash(true) }} onWithdrawPettyCash={() => { setPettyCashAction('withdraw'); setShowPettyCash(true) }} onPayDebt={setPayingDebt} onDeleteDebt={deleteDebt} />}
+          {page === 'Finances' && <FinancePage debts={debts} pettyCash={pettyCash} purchases={purchases} expenses={businessExpenses} cashMovements={cashMovements} accountBalances={accountBalances} cashMovementSearch={cashMovementSearch} setCashMovementSearch={setCashMovementSearch} onDeleteMovement={deleteCashMovement} onEditMovement={editCashMovement} onEditPettyCash={setEditingPettyCash} onDeletePettyCash={deletePettyCash} onEditPurchase={setEditingPurchase} onDeletePurchase={deleteInventoryPurchase} onEditExpense={setEditingExpense} onDeleteExpense={deleteBusinessExpense} setShowDebt={setShowDebt} setShowPurchase={() => setShowPurchase(true)} setShowExpense={() => setShowExpense(true)} onReceivePettyCash={() => { setPettyCashAction('receive'); setShowPettyCash(true) }} onWithdrawPettyCash={() => { setPettyCashAction('withdraw'); setShowPettyCash(true) }} onPayDebt={setPayingDebt} onEditDebt={setEditingDebt} onDeleteDebt={deleteDebt} />}
           {page === 'Reports' && <Reports products={products} sales={sales} pettyCash={pettyCash} purchases={purchases} expenses={businessExpenses} totals={totals} />}
         </main>
       </div>
@@ -841,6 +985,20 @@ export default function Page() {
         />
       )}
 
+      {editingDebt && (
+        <DebtModal
+          debt={editingDebt}
+          close={() => setEditingDebt(null)}
+          onSave={async (payload) => {
+            try {
+              await updateDebt(editingDebt.id, payload)
+            } catch (error) {
+              setLoginError(error instanceof Error ? error.message : 'Unable to update debt.')
+            }
+          }}
+        />
+      )}
+
       {showPettyCash && (
         <PettyCashModal
           action={pettyCashAction}
@@ -860,6 +1018,7 @@ export default function Page() {
         <InventoryPurchaseModal
           products={products}
           close={() => setShowPurchase(false)}
+          onCreateProduct={createProduct}
           onSave={async (payload) => {
             try {
               await createInventoryPurchase(payload)
@@ -869,6 +1028,7 @@ export default function Page() {
           }}
         />
       )}
+      {editingPurchase && <InventoryPurchaseModal purchase={editingPurchase} products={products} close={() => setEditingPurchase(null)} onCreateProduct={createProduct} onSave={(payload) => updateInventoryPurchase(editingPurchase.id, payload)} onDelete={() => void deleteInventoryPurchase(editingPurchase)} />}
 
       {showExpense && (
         <BusinessExpenseModal
@@ -882,7 +1042,9 @@ export default function Page() {
           }}
         />
       )}
-
+      {editingExpense && <BusinessExpenseModal expense={editingExpense} close={() => setEditingExpense(null)} onDelete={() => void deleteBusinessExpense(editingExpense)} onSave={(payload) => updateBusinessExpense(editingExpense.id, payload)} />}
+      {editingPettyCash && <PettyCashEditModal entry={editingPettyCash} close={() => setEditingPettyCash(null)} onDelete={() => void deletePettyCash(editingPettyCash)} onSave={(payload) => updatePettyCash(editingPettyCash, payload)} />}
+      {editingDebtPayment && <DebtPaymentEditModal payment={editingDebtPayment} close={() => setEditingDebtPayment(null)} onSave={(payload) => updateDebtPayment(editingDebtPayment, payload)} />}
       {receipt && <ReceiptModal sale={receipt} close={() => setReceipt(null)} />}
       {editingSale && <SaleEditModal sale={editingSale} products={products} close={() => setEditingSale(null)} onSave={(items, date, vat) => updateSale(editingSale, items, date, vat)} />}
       {payingDebt && <DebtPaymentModal debt={payingDebt} close={() => setPayingDebt(null)} onPay={(amount, method) => settleDebt(payingDebt, amount, method)} />}
@@ -1372,7 +1534,38 @@ function DebtPaymentModal({ debt, close, onPay }: { debt: Debt; close: () => voi
   )
 }
 
-function FinancePage({ debts, pettyCash, purchases, expenses, cashMovements, accountBalances, cashMovementSearch, setCashMovementSearch, onDeleteMovement, setShowDebt, setShowPurchase, setShowExpense, onReceivePettyCash, onWithdrawPettyCash, onPayDebt, onDeleteDebt }: any) {
+function DebtPaymentEditModal({ payment, close, onSave }: { payment: DebtPayment; close: () => void; onSave: (input: { amount: number; paymentMethod: string; date: string }) => Promise<void> }) {
+  const [amount, setAmount] = useState(String(payment.amount))
+  const [date, setDate] = useState(payment.date)
+  const [paymentMethod, setPaymentMethod] = useState(payment.paymentMethod)
+  const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const save = async () => {
+    setSaving(true)
+    setError('')
+    try {
+      await onSave({ amount: Number(amount), paymentMethod, date })
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Unable to update payment.')
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Modal title={`Edit ${payment.kind} payment`} close={close}>
+      <div className="form-grid">
+        <label>Payment date<input type="date" value={date} onChange={(event) => setDate(event.target.value)} /></label>
+        <label>Amount<input type="number" min="1" value={amount} onChange={(event) => setAmount(event.target.value)} /></label>
+        <label>Payment account<select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)}><option value="cash">Cash</option><option value="petty_cash">Petty cash</option><option value="bank">Bank</option><option value="mobile_money">Mobile Money</option><option value="other">Other</option></select></label>
+      </div>
+      {error ? <div className="error-text">{error}</div> : null}
+      <button className="primary-btn full" disabled={saving || Number(amount) <= 0} onClick={() => void save()}>{saving ? 'Saving payment…' : 'Save payment changes'} <Check /></button>
+    </Modal>
+  )
+}
+
+function FinancePage({ debts, pettyCash, purchases, expenses, cashMovements, accountBalances, cashMovementSearch, setCashMovementSearch, onDeleteMovement, onEditMovement, onEditPettyCash, onDeletePettyCash, onEditPurchase, onDeletePurchase, onEditExpense, onDeleteExpense, setShowDebt, setShowPurchase, setShowExpense, onReceivePettyCash, onWithdrawPettyCash, onPayDebt, onEditDebt, onDeleteDebt }: any) {
   const customers = debts.filter((item: Debt) => item.kind === 'customer')
   const suppliers = debts.filter((item: Debt) => item.kind === 'supplier')
   const [customerSearch, setCustomerSearch] = useState('')
@@ -1429,7 +1622,7 @@ function FinancePage({ debts, pettyCash, purchases, expenses, cashMovements, acc
           <BrowseControls count={customers.length} query={customerSearch} onQueryChange={setCustomerSearch} scrollRef={customerListRef} placeholder="Search customers..." />
           <div className={`debt-list ${customers.length > 3 ? 'side-scroll-list' : ''}`} ref={customerListRef}>
           {visibleCustomers.length ? visibleCustomers.map((entry: Debt) => (
-            <DebtRow key={entry.id} entry={entry} onPayDebt={onPayDebt} onDeleteDebt={onDeleteDebt} />
+            <DebtRow key={entry.id} entry={entry} onPayDebt={onPayDebt} onEditDebt={onEditDebt} onDeleteDebt={onDeleteDebt} />
           )) : <div className="empty-state">{customers.length ? 'No matching customers.' : 'No customer debts recorded.'}</div>}
           </div>
         </div>
@@ -1445,7 +1638,7 @@ function FinancePage({ debts, pettyCash, purchases, expenses, cashMovements, acc
           <BrowseControls count={suppliers.length} query={supplierSearch} onQueryChange={setSupplierSearch} scrollRef={supplierListRef} placeholder="Search suppliers..." />
           <div className={`debt-list ${suppliers.length > 3 ? 'side-scroll-list' : ''}`} ref={supplierListRef}>
           {visibleSuppliers.length ? visibleSuppliers.map((entry: Debt) => (
-            <DebtRow key={entry.id} entry={entry} onPayDebt={onPayDebt} />
+            <DebtRow key={entry.id} entry={entry} onPayDebt={onPayDebt} onEditDebt={onEditDebt} onDeleteDebt={onDeleteDebt} />
           )) : <div className="empty-state">{suppliers.length ? 'No matching suppliers.' : 'No supplier debts recorded.'}</div>}
           </div>
         </div>
@@ -1465,6 +1658,7 @@ function FinancePage({ debts, pettyCash, purchases, expenses, cashMovements, acc
             <span className={`movement-indicator ${movement.amount >= 0 ? 'is-inflow' : 'is-outflow'}`}>{movement.amount >= 0 ? '+' : '−'}</span>
             <span className="movement-details"><strong>{movement.type.replaceAll('_', ' ')}</strong><small>{movement.date} · {movement.account.replaceAll('_', ' ')} · Ref {movement.reference || movement.id}</small></span>
             <strong className={`movement-amount ${movement.amount >= 0 ? 'green-text' : 'negative'}`}>{movement.amount >= 0 ? '+' : '−'}{money(Math.abs(movement.amount))}</strong>
+            <button className="movement-edit" type="button" aria-label={`Edit ${movement.type.replaceAll('_', ' ')} ${movement.reference || movement.id}`} title="Edit source transaction" onClick={() => onEditMovement(movement)}><Pencil /></button>
             <button className="movement-delete" type="button" aria-label={`Delete ${movement.type.replaceAll('_', ' ')} ${movement.reference || movement.id}`} title="Delete transaction and reverse balances" onClick={() => void onDeleteMovement(movement)}><Trash2 /></button>
           </article>)}
         </div> : <div className="empty-state">{cashMovements.length ? 'No matching transactions.' : 'No cash or bank movements recorded yet.'}</div>}
@@ -1477,6 +1671,7 @@ function FinancePage({ debts, pettyCash, purchases, expenses, cashMovements, acc
           {visibleExpenses.map((expense: BusinessExpense) => <div className="business-expense-row" key={expense.id}>
             <span><strong>{expense.category} · {expense.description}</strong><small>{expense.date}{expense.supplier ? ` · ${expense.supplier}` : ''} · {expense.paymentStatus === 'paid' ? 'Paid' : expense.paymentStatus === 'partial' ? 'Partially paid' : 'Unpaid'}</small></span>
             <strong>{money(expense.amountExclVat)}<small>VAT {money(expense.vatAmount)} · Total {money(expense.total)}</small></strong>
+            <span className="transaction-row-actions"><button className="icon-btn" type="button" title="Edit expense" aria-label={`Edit expense ${expense.description}`} onClick={() => onEditExpense(expense)}><Pencil /></button><button className="icon-btn danger-icon" type="button" title="Delete expense" aria-label={`Delete expense ${expense.description}`} onClick={() => void onDeleteExpense(expense)}><Trash2 /></button></span>
           </div>)}
         </div> : <div className="empty-state">{expenses.length ? 'No matching expenses.' : 'No business expenses recorded.'}</div>}
       </div>
@@ -1494,6 +1689,14 @@ function FinancePage({ debts, pettyCash, purchases, expenses, cashMovements, acc
               <div><strong>{purchase.supplier}</strong><small>{purchase.id} · {purchase.date} · {purchase.items.map((item) => `${item.name} (${formatQuantity(item.qty, item.unit)})`).join(', ')}</small></div>
               <span>Inventory {money(inventoryCost)}<small>VAT {money(purchase.vatAmount)}</small></span>
               <span>Paid {money(purchase.paidAmount)}<small>Owing {money(Math.max(0, purchase.total - purchase.paidAmount))}</small></span>
+              <span className="transaction-row-actions">
+                <button className="icon-btn" type="button" title="Edit inventory purchase" aria-label={`Edit purchase ${purchase.id}`} onClick={() => onEditPurchase(purchase)}>
+                  <Pencil />
+                </button>
+                <button className="icon-btn danger-icon" type="button" title="Delete inventory purchase" aria-label={`Delete purchase ${purchase.id}`} onClick={() => void onDeletePurchase(purchase)}>
+                  <Trash2 />
+                </button>
+              </span>
             </div>
           })}
         </div> : <div className="empty-state">{purchases.length ? 'No matching purchases.' : 'No inventory purchases recorded.'}</div>}
@@ -1526,6 +1729,7 @@ function FinancePage({ debts, pettyCash, purchases, expenses, cashMovements, acc
               <span className="expense-indicator"><Wallet /></span>
               <span className="expense-description"><strong>{entry.reason}</strong><small>{entry.category || (entry.type === 'expense' ? 'Business expense' : entry.type === 'business_expense_payment' ? 'Business expense payment' : entry.type === 'other_expense' ? 'Other business expense' : entry.type === 'other_income' ? 'Other business income' : entry.type === 'owner_drawing' ? 'Owner drawing' : entry.type === 'owner_contribution' ? 'Owner capital contribution' : entry.type === 'bank_transfer_in' ? 'Transfer from bank' : entry.type === 'cash_transfer_in' ? 'Transfer from main cash' : entry.type === 'customer_payment' ? 'Customer payment' : entry.type === 'supplier_payment' ? 'Supplier payment' : entry.type === 'inventory_purchase_payment' ? 'Inventory purchase payment' : 'Cash transfer')} · {new Date(`${entry.date}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} · Balance {money(entry.runningBalance ?? 0)} · {entry.user ?? 'unknown'} · Ref {entry.reference || entry.id}</small></span>
               <strong className={`expense-amount ${['owner_contribution', 'customer_payment', 'cash_in', 'other_income', 'bank_transfer_in', 'cash_transfer_in'].includes(entry.type) ? 'cash-in-amount' : ''}`}>{['owner_contribution', 'customer_payment', 'cash_in', 'other_income', 'bank_transfer_in', 'cash_transfer_in'].includes(entry.type) ? '+' : '−'}{money(entry.amount)}</strong>
+              <span className="transaction-row-actions"><button className="icon-btn" type="button" title="Edit petty-cash transaction" aria-label={`Edit petty-cash transaction ${entry.reason}`} onClick={() => onEditPettyCash(entry)}><Pencil /></button><button className="icon-btn danger-icon" type="button" title="Delete petty-cash transaction" aria-label={`Delete petty-cash transaction ${entry.reason}`} onClick={() => void onDeletePettyCash(entry)}><Trash2 /></button></span>
             </div>
           )) : pettyCash.length ? <div className="empty-state">No matching expenses.</div> : <div className="petty-cash-empty"><Wallet /><span>No expenses recorded yet</span><small>Your petty cash entries will appear here.</small></div>}
         </div>
@@ -1534,7 +1738,7 @@ function FinancePage({ debts, pettyCash, purchases, expenses, cashMovements, acc
   )
 }
 
-function DebtRow({ entry, onPayDebt, onDeleteDebt }: { entry: Debt; onPayDebt: (entry: Debt) => void; onDeleteDebt?: (entry: Debt) => void }) {
+function DebtRow({ entry, onPayDebt, onEditDebt, onDeleteDebt }: { entry: Debt; onPayDebt: (entry: Debt) => void; onEditDebt?: (entry: Debt) => void; onDeleteDebt?: (entry: Debt) => void }) {
   const paidAmount = Math.max(0, Number(entry.paidAmount ?? 0))
   const remainingAmount = Math.max(0, Number(entry.amount ?? 0))
   const originalAmount = Math.max(Number(entry.original ?? 0), paidAmount + remainingAmount, 1)
@@ -1579,6 +1783,10 @@ function DebtRow({ entry, onPayDebt, onDeleteDebt }: { entry: Debt; onPayDebt: (
           <strong className="debt-remaining-value">{money(remainingAmount)}</strong>
           {isCleared ? <span className="debt-cleared-note"><Check /> Paid in full</span> : <button className="outline-btn settle-debt" disabled={entry.status === 'settling'} onClick={() => onPayDebt(entry)}>{entry.status === 'settling' ? 'Processing' : 'Pay supplier'}</button>}
         </>}
+        <div className="transaction-row-actions">
+          <button className="icon-btn" type="button" title="Edit debt account" aria-label={`Edit debt ${entry.name}`} onClick={() => onEditDebt?.(entry)}><Pencil /></button>
+          <button className="icon-btn danger-icon" type="button" title="Delete debt account" aria-label={`Delete debt ${entry.name}`} onClick={() => onDeleteDebt?.(entry)}><Trash2 /></button>
+        </div>
       </div>
     </div>
   )
@@ -2108,13 +2316,13 @@ function PasswordModal({ close, onSave }: { close: () => void; onSave: (currentP
   )
 }
 
-function DebtModal({ close, onSave }: { close: () => void; onSave: (payload: { name: string; phone?: string; amount: number; kind: 'customer' | 'supplier'; due: string; description?: string }) => Promise<void> }) {
-  const [name, setName] = useState('')
-  const [phone, setPhone] = useState('')
-  const [amount, setAmount] = useState('')
-  const [kind, setKind] = useState<'customer' | 'supplier'>('customer')
-  const [description, setDescription] = useState('')
-  const [due, setDue] = useState(new Date().toISOString().slice(0, 10))
+function DebtModal({ debt, close, onSave }: { debt?: Debt | null; close: () => void; onSave: (payload: { name: string; phone?: string; amount?: number; kind: 'customer' | 'supplier'; due: string; description?: string }) => Promise<void> }) {
+  const [name, setName] = useState(debt?.name ?? '')
+  const [phone, setPhone] = useState(debt?.phone ?? '')
+  const [amount, setAmount] = useState(debt ? String(debt.amount) : '')
+  const [kind, setKind] = useState<'customer' | 'supplier'>(debt?.kind ?? 'customer')
+  const [description, setDescription] = useState(debt?.description ?? '')
+  const [due, setDue] = useState(debt?.due ?? new Date().toISOString().slice(0, 10))
 
   const save = async () => {
     if (!name.trim() || !amount) {
@@ -2132,7 +2340,7 @@ function DebtModal({ close, onSave }: { close: () => void; onSave: (payload: { n
   }
 
   return (
-    <Modal title="Add debt account" close={close}>
+    <Modal title={debt ? 'Edit debt account' : 'Add debt account'} close={close}>
       <div className="form-grid">
         <label>
           Name
@@ -2163,20 +2371,20 @@ function DebtModal({ close, onSave }: { close: () => void; onSave: (payload: { n
         </label>
       </div>
       <button className="primary-btn full" onClick={() => void save()}>
-        Save account <Check />
+        {debt ? 'Save debt changes' : 'Save account'} <Check />
       </button>
     </Modal>
   )
 }
 
-function BusinessExpenseModal({ close, onSave }: { close: () => void; onSave: (input: { date: string; category: string; description: string; supplier: string; amountExclVat: number; vatAmount: number; paymentStatus: 'paid' | 'unpaid'; paymentMethod: string }) => Promise<void> }) {
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
-  const [category, setCategory] = useState('Other operating expense')
-  const [description, setDescription] = useState('')
-  const [supplier, setSupplier] = useState('')
-  const [amountExclVat, setAmountExclVat] = useState('')
-  const [vatAmount, setVatAmount] = useState('0')
-  const [paymentStatus, setPaymentStatus] = useState<'paid' | 'unpaid'>('paid')
+function BusinessExpenseModal({ expense, close, onSave, onDelete }: { expense?: BusinessExpense | null; close: () => void; onSave: (input: { date: string; category: string; description: string; supplier: string; amountExclVat: number; vatAmount: number; paymentStatus: 'paid' | 'unpaid'; paymentMethod: string }) => Promise<void>; onDelete?: () => void }) {
+  const [date, setDate] = useState(expense?.date ?? new Date().toISOString().slice(0, 10))
+  const [category, setCategory] = useState(expense?.category ?? 'Other operating expense')
+  const [description, setDescription] = useState(expense?.description ?? '')
+  const [supplier, setSupplier] = useState(expense?.supplier ?? '')
+  const [amountExclVat, setAmountExclVat] = useState(expense ? String(expense.amountExclVat) : '')
+  const [vatAmount, setVatAmount] = useState(expense ? String(expense.vatAmount) : '0')
+  const [paymentStatus, setPaymentStatus] = useState<'paid' | 'unpaid'>(expense?.paymentStatus === 'unpaid' ? 'unpaid' : 'paid')
   const [paymentMethod, setPaymentMethod] = useState('cash')
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
@@ -2193,7 +2401,7 @@ function BusinessExpenseModal({ close, onSave }: { close: () => void; onSave: (i
   }
 
   return (
-    <Modal title="Record business expense" close={close}>
+    <Modal title={expense ? 'Edit business expense' : 'Record business expense'} close={close}>
       <div className="form-grid">
         <label>Expense date<input type="date" value={date} onChange={(event) => setDate(event.target.value)} /></label>
         <label>Category<select value={category} onChange={(event) => setCategory(event.target.value)}><option>Rent</option><option>Electricity</option><option>Internet</option><option>Transport</option><option>Salaries</option><option>Repairs</option><option>Packaging</option><option>Advertising</option><option>Bank charges</option><option>Cleaning</option><option>Office supplies</option><option>Other operating expense</option></select></label>
@@ -2201,12 +2409,49 @@ function BusinessExpenseModal({ close, onSave }: { close: () => void; onSave: (i
         <label>Supplier / payee (optional)<input value={supplier} onChange={(event) => setSupplier(event.target.value)} placeholder="Supplier or service provider" /></label>
         <label>Amount excluding VAT<input type="number" min="0.01" step="0.01" value={amountExclVat} onChange={(event) => setAmountExclVat(event.target.value)} /></label>
         <label>Input VAT<input type="number" min="0" step="0.01" value={vatAmount} onChange={(event) => setVatAmount(event.target.value)} /></label>
-        <label>Payment status<select value={paymentStatus} onChange={(event) => setPaymentStatus(event.target.value as 'paid' | 'unpaid')}><option value="paid">Paid</option><option value="unpaid">Unpaid</option></select></label>
-        {paymentStatus === 'paid' && <label>Payment method<select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)}><option value="cash">Cash</option><option value="petty_cash">Petty cash</option><option value="bank">Bank</option><option value="mobile_money">Mobile Money</option><option value="other">Other</option></select></label>}
+        {!expense && <label>Payment status<select value={paymentStatus} onChange={(event) => setPaymentStatus(event.target.value as 'paid' | 'unpaid')}><option value="paid">Paid</option><option value="unpaid">Unpaid</option></select></label>}
+        {!expense && paymentStatus === 'paid' && <label>Payment method<select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)}><option value="cash">Cash</option><option value="petty_cash">Petty cash</option><option value="bank">Bank</option><option value="mobile_money">Mobile Money</option><option value="other">Other</option></select></label>}
+        {expense && <div className="expense-edit-status">Payment status: <strong>{expense.paymentStatus}</strong> · Paid {money(expense.paidAmount)} of {money(expense.total)}</div>}
       </div>
       <div className="payment-remaining"><span>Total expense including VAT</span><strong>{money(Number(amountExclVat || 0) + Number(vatAmount || 0))}</strong></div>
       {error ? <div className="error-text">{error}</div> : null}
-      <button className="primary-btn full" disabled={saving || !description.trim() || Number(amountExclVat) <= 0 || Number(vatAmount) < 0} onClick={() => void save()}>{saving ? 'Saving expense…' : 'Save expense'} <Check /></button>
+      {onDelete && <button className="danger-btn expense-delete-action" type="button" onClick={onDelete}><Trash2 /> Delete expense</button>}
+      <button className="primary-btn full" disabled={saving || !description.trim() || Number(amountExclVat) <= 0 || Number(vatAmount) < 0} onClick={() => void save()}>{saving ? 'Saving expense…' : expense ? 'Save expense changes' : 'Save expense'} <Check /></button>
+    </Modal>
+  )
+}
+
+function PettyCashEditModal({ entry, close, onSave, onDelete }: { entry: PettyCash; close: () => void; onSave: (input: { amount: number; reason: string; date: string; category: string; vatAmount: number }) => Promise<void>; onDelete: () => void }) {
+  const [amount, setAmount] = useState(String(entry.amount))
+  const [reason, setReason] = useState(entry.reason)
+  const [date, setDate] = useState(entry.date)
+  const [vatAmount, setVatAmount] = useState(String(entry.vatAmount ?? 0))
+  const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const save = async () => {
+    setSaving(true)
+    setError('')
+    try {
+      await onSave({ amount: Number(amount), reason: reason.trim(), date, category: entry.category ?? '', vatAmount: Number(vatAmount || 0) })
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Unable to update petty-cash transaction.')
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Modal title="Edit petty-cash transaction" close={close}>
+      <div className="form-grid">
+        <label>Transaction type<input readOnly value={entry.category || entry.type.replaceAll('_', ' ')} /></label>
+        <label>Date<input type="date" value={date} onChange={(event) => setDate(event.target.value)} /></label>
+        <label>Amount<input type="number" min="0.01" value={amount} onChange={(event) => setAmount(event.target.value)} /></label>
+        {['expense', 'other_expense', 'business_expense_payment'].includes(entry.type) && <label>VAT<input type="number" min="0" max={amount} value={vatAmount} onChange={(event) => setVatAmount(event.target.value)} /></label>}
+        <label>Description<input value={reason} onChange={(event) => setReason(event.target.value)} /></label>
+      </div>
+      {error ? <div className="error-text">{error}</div> : null}
+      <button className="danger-btn expense-delete-action" type="button" onClick={onDelete}><Trash2 /> Delete transaction</button>
+      <button className="primary-btn full" disabled={saving || !reason.trim() || Number(amount) <= 0 || Number(vatAmount) < 0 || Number(vatAmount) > Number(amount)} onClick={() => void save()}>{saving ? 'Saving…' : 'Save changes'} <Check /></button>
     </Modal>
   )
 }
@@ -2260,17 +2505,18 @@ function PettyCashModal({ action, close, onSave }: { action: 'receive' | 'withdr
   )
 }
 
-function InventoryPurchaseModal({ products, close, onSave }: { products: Product[]; close: () => void; onSave: (input: { supplier: string; date: string; items: { productId: number; qty: number; unitCost: number }[]; vatAmount: number; paidAmount: number; paymentMethod: string }) => Promise<void> }) {
-  const [supplier, setSupplier] = useState('')
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
+function InventoryPurchaseModal({ purchase, products, close, onSave, onCreateProduct, onDelete }: { purchase?: InventoryPurchase | null; products: Product[]; close: () => void; onSave: (input: { supplier: string; date: string; items: { productId: number; qty: number; unitCost: number }[]; vatAmount: number; paidAmount: number; paymentMethod: string }) => Promise<void>; onCreateProduct: (input: ProductFormInput) => Promise<Product>; onDelete?: () => void }) {
+  const [supplier, setSupplier] = useState(purchase?.supplier ?? '')
+  const [date, setDate] = useState(purchase?.date ?? new Date().toISOString().slice(0, 10))
   const [productId, setProductId] = useState('')
-  const [items, setItems] = useState<{ productId: number; qty: number; unitCost: number }[]>([])
-  const [vatAmount, setVatAmount] = useState('0')
-  const [paymentTerms, setPaymentTerms] = useState<'cash' | 'credit' | 'partial' | ''>('')
-  const [partialPaidAmount, setPartialPaidAmount] = useState('')
-  const [paymentMethod, setPaymentMethod] = useState('cash')
+  const [items, setItems] = useState<{ productId: number; qty: number; unitCost: number }[]>(purchase?.items.map((item) => ({ productId: item.productId, qty: item.qty, unitCost: item.unitCost })) ?? [])
+  const [vatAmount, setVatAmount] = useState(String(purchase?.vatAmount ?? 0))
+  const [paymentTerms, setPaymentTerms] = useState<'cash' | 'credit' | 'partial' | ''>(purchase ? purchase.paymentMethod === 'credit' ? 'credit' : purchase.paidAmount >= purchase.total ? 'cash' : purchase.paidAmount > 0 ? 'partial' : 'credit' : '')
+  const [partialPaidAmount, setPartialPaidAmount] = useState(purchase && purchase.paidAmount > 0 && purchase.paidAmount < purchase.total ? String(purchase.paidAmount) : '')
+  const [paymentMethod, setPaymentMethod] = useState(purchase?.paymentMethod && purchase.paymentMethod !== 'credit' ? purchase.paymentMethod : 'cash')
   const [error, setError] = useState('')
   const [itemMessage, setItemMessage] = useState('Select a product to enable Add item.')
+  const [showProductForm, setShowProductForm] = useState(false)
   const [saving, setSaving] = useState(false)
   const purchaseLinesRef = useRef<HTMLDivElement>(null)
   const addedProductId = useRef<number | null>(null)
@@ -2314,7 +2560,7 @@ function InventoryPurchaseModal({ products, close, onSave }: { products: Product
   }
 
   return (
-    <Modal title="Receive inventory purchase" close={close}>
+    <Modal title={purchase ? `Edit inventory purchase ${purchase.id}` : 'Receive inventory purchase'} close={close}>
       <div className="form-grid">
         <label>Supplier<input value={supplier} onChange={(event) => setSupplier(event.target.value)} placeholder="Supplier name" /></label>
         <label>Purchase date<input type="date" value={date} onChange={(event) => setDate(event.target.value)} /></label>
@@ -2325,6 +2571,7 @@ function InventoryPurchaseModal({ products, close, onSave }: { products: Product
           setItemMessage(event.target.value ? 'Ready to add selected product.' : 'Select a product to enable Add item.')
         }}><option value="">Select product</option>{products.filter((product) => !items.some((item) => item.productId === product.id)).map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}</select></label>
         <button className="outline-btn" type="button" disabled={!productId} onClick={addItem}><Plus /> Add item</button>
+        <button className="outline-btn" type="button" onClick={() => setShowProductForm(true)}><Package /> Add product</button>
       </div>
       <div className="purchase-item-feedback" role="status">{itemMessage}</div>
       <div className="purchase-lines" ref={purchaseLinesRef}>
@@ -2356,7 +2603,17 @@ function InventoryPurchaseModal({ products, close, onSave }: { products: Product
       {paymentTerms === 'cash' && <div className="form-grid purchase-payment-fields"><label>Payment account<select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)}><option value="cash">Cash</option><option value="petty_cash">Petty cash</option><option value="bank">Bank</option><option value="mobile_money">Mobile Money</option><option value="other">Other</option></select></label></div>}
       <div className="payment-remaining"><span>Inventory subtotal {money(subtotal)} · Purchase total {money(total)} · Paid now {money(paidAmount)}</span><strong>Supplier balance {money(Math.max(0, total - paidAmount))}</strong></div>
       {error ? <div className="error-text">{error}</div> : null}
-      <button className="primary-btn full" disabled={saving || !supplier.trim() || !items.length || !paymentTermsValid || items.some((item) => item.qty <= 0 || item.unitCost < 0) || Number(vatAmount) < 0 || paidAmount < 0 || paidAmount > total} onClick={() => void save()}>{saving ? 'Saving purchase…' : paymentTerms === 'credit' ? 'Save credit purchase' : 'Save inventory purchase'} <Check /></button>
+      {onDelete && <button className="danger-btn purchase-delete-action" type="button" onClick={onDelete}><Trash2 /> Delete purchase</button>}
+      <button className="primary-btn full" disabled={saving || !supplier.trim() || !items.length || !paymentTermsValid || items.some((item) => item.qty <= 0 || item.unitCost < 0) || Number(vatAmount) < 0 || paidAmount < 0 || paidAmount > total} onClick={() => void save()}>{saving ? 'Saving purchase…' : purchase ? 'Save purchase changes' : paymentTerms === 'credit' ? 'Save credit purchase' : 'Save inventory purchase'} <Check /></button>
+      {showProductForm && <ProductModal product={null} close={() => setShowProductForm(false)} onSave={async (input) => {
+        try {
+          const product = await onCreateProduct(input)
+          setShowProductForm(false)
+          setItemMessage(`${product.name} is now available in the selector. Opening stock entered above was recorded separately.`)
+        } catch (createError) {
+          setItemMessage(createError instanceof Error ? createError.message : 'Unable to add product.')
+        }
+      }} />}
     </Modal>
   )
 }

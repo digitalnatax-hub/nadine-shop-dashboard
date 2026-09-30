@@ -78,7 +78,7 @@ export async function POST(request: Request) {
     let debt = null
     if (openingValue > 0 && openingPayment) {
       purchaseId = `PO-OPEN-${id}-${Date.now()}`
-      const purchaseItem = { productId: id, name, qty: stock, unit, unitCost: buy }
+      const purchaseItem = { productId: id, name, qty: stock, unit, unitCost: buy, priorStock: 0, priorCost: buy }
       purchase = {
         id: purchaseId,
         date: new Date().toISOString().slice(0, 10),

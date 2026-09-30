@@ -49,7 +49,7 @@ export async function POST(request: Request) {
       const updated = await products.updateOne({ id: item.productId, stock: product.stock }, { $set: { stock: nextStock, buy: nextCost } })
       if (!updated.modifiedCount) throw new Error(`${product.name} changed during this purchase. Refresh and try again.`)
       applied.push({ id: item.productId, stock: currentStock, buy: currentCost })
-      purchaseItems.push({ productId: item.productId, name: product.name, qty: item.qty, unit: product.unit, unitCost: item.unitCost })
+      purchaseItems.push({ productId: item.productId, name: product.name, qty: item.qty, unit: product.unit, unitCost: item.unitCost, priorStock: currentStock, priorCost: currentCost })
     }
 
     purchaseId = `PO-${Date.now()}`
