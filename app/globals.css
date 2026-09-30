@@ -273,6 +273,17 @@ body { background:linear-gradient(135deg,#f8f9fa 0%,#eef5f5 100%); }
 .inventory-purchase-history .panel-head h2 { margin:0 0 4px; font-size:15px; }
 .inventory-purchase-history .panel-head p { margin:0; color:var(--muted); font-size:11px; }
 .purchase-history-list { max-height:260px; overflow-y:auto; }
+.purchase-history-list.is-scrollable { overflow-y:scroll; scrollbar-width:thin; scrollbar-color:#86aaa9 #edf3f3; }
+.purchase-history-list.is-scrollable::-webkit-scrollbar,.business-expense-list.is-scrollable::-webkit-scrollbar { width:9px; }
+.purchase-history-list.is-scrollable::-webkit-scrollbar-track,.business-expense-list.is-scrollable::-webkit-scrollbar-track { border-radius:8px; background:#edf3f3; }
+.purchase-history-list.is-scrollable::-webkit-scrollbar-thumb,.business-expense-list.is-scrollable::-webkit-scrollbar-thumb { border:2px solid #edf3f3; border-radius:8px; background:#86aaa9; }
+.business-expense-history { padding:18px; margin:18px 0; }
+.business-expense-history .panel-head { padding-bottom:12px; border-bottom:1px solid #edf1f3; }
+.business-expense-history .panel-head h2 { margin:0 0 4px; font-size:15px; }
+.business-expense-history .panel-head p { margin:0; color:var(--muted); font-size:11px; }
+.business-expense-list { display:flex; flex-direction:column; }
+.business-expense-list.is-scrollable { max-height:260px; overflow-y:scroll; overscroll-behavior:contain; padding-right:7px; scrollbar-width:thin; scrollbar-color:#86aaa9 #edf3f3; }
+.business-expense-row { flex:none; }
 .purchase-history-row { display:grid; grid-template-columns:minmax(0,1fr) auto auto; align-items:center; gap:20px; min-height:62px; padding:10px 2px; border-bottom:1px solid #edf1f3; font-size:11px; }
 .purchase-history-row:last-child { border-bottom:0; }
 .purchase-history-row > div { min-width:0; }
@@ -294,6 +305,15 @@ body { background:linear-gradient(135deg,#f8f9fa 0%,#eef5f5 100%); }
 .purchase-line .icon-btn { width:32px; height:34px; }
 .purchase-payment-fields { margin-top:14px; }
 .purchase-payment-fields input,.purchase-payment-fields select { width:100%; }
+.purchase-terms-choice { margin-top:14px; }
+.opening-stock-payment { padding:14px; margin-top:14px; border:1px solid #e1ebec; border-radius:9px; background:#f8fbfb; }
+.opening-stock-summary { display:flex; align-items:baseline; justify-content:space-between; gap:8px; flex-wrap:wrap; }
+.opening-stock-summary span { color:var(--muted); font-size:11px; font-weight:800; }
+.opening-stock-summary strong { color:var(--primary); font-size:18px; font-variant-numeric:tabular-nums; }
+.opening-stock-summary small { flex-basis:100%; color:var(--muted); font-size:10px; }
+.opening-stock-payment .payment-choice { margin:13px 0 8px; }
+.opening-stock-field { display:grid; gap:6px; color:var(--foreground); font-size:11px; font-weight:700; }
+.opening-stock-field input,.opening-stock-field select { min-width:0; height:40px; padding:0 10px; border:1px solid var(--border); border-radius:8px; color:var(--foreground); background:#fff; }
 @media(max-width:720px){ .finance-actions { justify-content:stretch; margin-top:0; } .finance-actions > * { flex:1; justify-content:center; } .purchase-history-row { grid-template-columns:1fr 1fr; gap:8px 12px; } .purchase-history-row > div { grid-column:1/-1; } .purchase-history-row > span small { text-align:left; } .purchase-add-row { align-items:stretch; } .purchase-add-row .outline-btn { padding:8px; font-size:11px; } .purchase-line { grid-template-columns:1fr 1fr 32px; } .purchase-line > strong { grid-column:1/-1; } .purchase-line label { min-width:0; } }
 
 .account-movements-panel { padding:19px; margin:18px 0; overflow:hidden; }

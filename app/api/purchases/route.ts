@@ -30,8 +30,11 @@ export async function POST(request: Request) {
     if (!Number.isFinite(vatAmount) || vatAmount < 0 || !Number.isFinite(paidAmount) || paidAmount < 0 || paidAmount > total) {
       return NextResponse.json({ ok: false, error: 'VAT and paid amounts must be valid, and payment cannot exceed the purchase total.' }, { status: 400 })
     }
-    if (!['cash', 'petty_cash', 'bank', 'mobile_money', 'other'].includes(paymentMethod)) {
+    if (!['cash', 'petty_cash', 'bank', 'mobile_money', 'other', 'credit'].includes(paymentMethod)) {
       return NextResponse.json({ ok: false, error: 'Select a valid payment method.' }, { status: 400 })
+    }
+    if (paymentMethod === 'credit' && paidAmount !== 0) {
+      return NextResponse.json({ ok: false, error: 'A credit purchase cannot also have an amount paid now.' }, { status: 400 })
     }
 
     const products = await getCollection<any>('products')

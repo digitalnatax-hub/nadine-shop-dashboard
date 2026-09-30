@@ -42,6 +42,12 @@ type Product = {
   min: number
 }
 
+type ProductFormInput = Omit<Product, 'id'> & {
+  openingPayment?: 'cash' | 'credit'
+  supplier?: string
+  paymentMethod?: string
+}
+
 type Sale = {
   id: string
   date: string
@@ -452,7 +458,7 @@ export default function Page() {
     setDebts((current) => current.filter((entry) => entry.id !== debt.id))
   }
 
-  const createProduct = async (input: { name: string; category: string; stock: number; unit: string; buy: number; sell: number; min: number }) => {
+  const createProduct = async (input: ProductFormInput) => {
     const response = await fetch('/api/products', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -464,11 +470,11 @@ export default function Page() {
       throw new Error(payload.error ?? 'Unable to create product.')
     }
 
-    setProducts((current) => [payload.product, ...current])
+    await loadData()
     setShowProduct(false)
   }
 
-  const updateProduct = async (id: number, input: { name: string; category: string; stock: number; unit: string; buy: number; sell: number; min: number }) => {
+  const updateProduct = async (id: number, input: Omit<Product, 'id'>) => {
     const response = await fetch(`/api/products/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -1143,14 +1149,16 @@ function BrowseControls({
   onQueryChange,
   scrollRef,
   placeholder,
+  alwaysVisible = false,
 }: {
   count: number
   query: string
   onQueryChange: (value: string) => void
   scrollRef: React.RefObject<HTMLDivElement | null>
   placeholder: string
+  alwaysVisible?: boolean
 }) {
-  if (count <= 3) return null
+  if (count <= 3 && !alwaysVisible) return null
 
   const scroll = (direction: -1 | 1) => {
     const list = scrollRef.current
@@ -1163,10 +1171,10 @@ function BrowseControls({
         <Search />
         <input aria-label={placeholder} placeholder={placeholder} value={query} onChange={(event) => onQueryChange(event.target.value)} />
       </label>
-      <div className="list-scroll-buttons">
+      {count > 3 && <div className="list-scroll-buttons">
         <button type="button" aria-label="Scroll list up" title="Scroll up" onClick={() => scroll(-1)}><ChevronUp /></button>
         <button type="button" aria-label="Scroll list down" title="Scroll down" onClick={() => scroll(1)}><ChevronDown /></button>
-      </div>
+      </div>}
     </div>
   )
 }
@@ -1370,13 +1378,22 @@ function FinancePage({ debts, pettyCash, purchases, expenses, cashMovements, acc
   const [customerSearch, setCustomerSearch] = useState('')
   const [supplierSearch, setSupplierSearch] = useState('')
   const [pettyCashSearch, setPettyCashSearch] = useState('')
+  const [expenseSearch, setExpenseSearch] = useState('')
+  const [purchaseSearch, setPurchaseSearch] = useState('')
   const customerListRef = useRef<HTMLDivElement>(null)
   const supplierListRef = useRef<HTMLDivElement>(null)
   const pettyCashListRef = useRef<HTMLDivElement>(null)
+  const expenseListRef = useRef<HTMLDivElement>(null)
+  const purchaseListRef = useRef<HTMLDivElement>(null)
   const visibleCustomers = customers.filter((entry: Debt) => `${entry.name} ${entry.phone ?? ''} ${entry.description ?? ''}`.toLowerCase().includes(customerSearch.toLowerCase()))
   const visibleSuppliers = suppliers.filter((entry: Debt) => `${entry.name} ${entry.phone ?? ''} ${entry.description ?? ''}`.toLowerCase().includes(supplierSearch.toLowerCase()))
   const visiblePettyCash = pettyCash.filter((entry: PettyCash) => `${entry.reason} ${entry.date} ${entry.amount}`.toLowerCase().includes(pettyCashSearch.toLowerCase()))
+  const visibleExpenses = expenses.filter((entry: BusinessExpense) => `${entry.category} ${entry.description} ${entry.supplier} ${entry.date} ${entry.paymentStatus}`.toLowerCase().includes(expenseSearch.trim().toLowerCase()))
+  const visiblePurchases = purchases.filter((entry: InventoryPurchase) => `${entry.supplier} ${entry.id} ${entry.date} ${entry.items.map((item) => item.name).join(' ')} ${entry.paymentMethod}`.toLowerCase().includes(purchaseSearch.trim().toLowerCase()))
   const visibleCashMovements = cashMovements.filter((entry: CashMovement) => `${entry.type} ${entry.account} ${entry.date} ${entry.reference} ${entry.amount}`.toLowerCase().includes(cashMovementSearch.trim().toLowerCase()))
+  const pettyCashInflows = pettyCash.filter((entry: PettyCash) => ['owner_contribution', 'customer_payment', 'cash_in', 'other_income', 'bank_transfer_in', 'cash_transfer_in'].includes(entry.type)).reduce((sum: number, entry: PettyCash) => sum + Number(entry.amount), 0)
+  const pettyCashOutflows = pettyCash.filter((entry: PettyCash) => !['owner_contribution', 'customer_payment', 'cash_in', 'other_income', 'bank_transfer_in', 'cash_transfer_in'].includes(entry.type)).reduce((sum: number, entry: PettyCash) => sum + Number(entry.amount), 0)
+  const pettyCashAvailable = pettyCashInflows - pettyCashOutflows
 
   return (
     <>
@@ -1454,22 +1471,24 @@ function FinancePage({ debts, pettyCash, purchases, expenses, cashMovements, acc
       </div>
 
       <div className="panel business-expense-history">
-        <div className="panel-head"><div><h2>Business expenses</h2><p>Recognized on the expense date; unpaid balances remain in supplier payables.</p></div><span className="count-badge amber-bg">{expenses.length}</span></div>
-        {expenses.length ? <div className="business-expense-list">
-          {expenses.map((expense: BusinessExpense) => <div className="business-expense-row" key={expense.id}>
+        <div className="panel-head"><div><h2>Business expenses</h2><p>Recognized on the expense date; unpaid balances remain in supplier payables.</p></div><span className="count-badge amber-bg">{visibleExpenses.length} / {expenses.length}</span></div>
+        <BrowseControls count={expenses.length} query={expenseSearch} onQueryChange={setExpenseSearch} scrollRef={expenseListRef} placeholder="Search expenses..." alwaysVisible />
+        {visibleExpenses.length ? <div className={`business-expense-list${visibleExpenses.length > 3 ? ' is-scrollable' : ''}`} ref={expenseListRef}>
+          {visibleExpenses.map((expense: BusinessExpense) => <div className="business-expense-row" key={expense.id}>
             <span><strong>{expense.category} · {expense.description}</strong><small>{expense.date}{expense.supplier ? ` · ${expense.supplier}` : ''} · {expense.paymentStatus === 'paid' ? 'Paid' : expense.paymentStatus === 'partial' ? 'Partially paid' : 'Unpaid'}</small></span>
             <strong>{money(expense.amountExclVat)}<small>VAT {money(expense.vatAmount)} · Total {money(expense.total)}</small></strong>
           </div>)}
-        </div> : <div className="empty-state">No business expenses recorded.</div>}
+        </div> : <div className="empty-state">{expenses.length ? 'No matching expenses.' : 'No business expenses recorded.'}</div>}
       </div>
 
       <div className="panel inventory-purchase-history">
         <div className="panel-head">
           <div><h2>Inventory purchases</h2><p>Purchases increase stock; only items sold enter COGS.</p></div>
-          <span className="count-badge teal-bg">{purchases.length}</span>
+          <span className="count-badge teal-bg">{visiblePurchases.length} / {purchases.length}</span>
         </div>
-        {purchases.length ? <div className="purchase-history-list">
-          {purchases.map((purchase: InventoryPurchase) => {
+        <BrowseControls count={purchases.length} query={purchaseSearch} onQueryChange={setPurchaseSearch} scrollRef={purchaseListRef} placeholder="Search supplier, product or reference..." alwaysVisible />
+        {visiblePurchases.length ? <div className={`purchase-history-list${visiblePurchases.length > 3 ? ' is-scrollable' : ''}`} ref={purchaseListRef}>
+          {visiblePurchases.map((purchase: InventoryPurchase) => {
             const inventoryCost = purchase.items.reduce((sum, item) => sum + Number(item.qty) * Number(item.unitCost), 0)
             return <div className="purchase-history-row" key={purchase.id}>
               <div><strong>{purchase.supplier}</strong><small>{purchase.id} · {purchase.date} · {purchase.items.map((item) => `${item.name} (${formatQuantity(item.qty, item.unit)})`).join(', ')}</small></div>
@@ -1477,7 +1496,7 @@ function FinancePage({ debts, pettyCash, purchases, expenses, cashMovements, acc
               <span>Paid {money(purchase.paidAmount)}<small>Owing {money(Math.max(0, purchase.total - purchase.paidAmount))}</small></span>
             </div>
           })}
-        </div> : <div className="empty-state">No inventory purchases recorded.</div>}
+        </div> : <div className="empty-state">{purchases.length ? 'No matching purchases.' : 'No inventory purchases recorded.'}</div>}
       </div>
 
       <div className="panel petty-cash-panel">
@@ -1495,7 +1514,9 @@ function FinancePage({ debts, pettyCash, purchases, expenses, cashMovements, acc
           </div>
         </div>
         <div className="petty-cash-summary">
-                <div><span>Petty cash balance</span><strong>{money(pettyCash.reduce((balance: number, entry: PettyCash) => balance + (['owner_contribution', 'customer_payment', 'cash_in', 'other_income', 'bank_transfer_in', 'cash_transfer_in'].includes(entry.type) ? entry.amount : -entry.amount), 0))}</strong></div>
+          <div><span>Available balance</span><strong>{money(pettyCashAvailable)}</strong></div>
+          <div><span>Total added</span><strong className="cash-in-amount">+{money(pettyCashInflows)}</strong></div>
+          <div><span>Total used</span><strong className="negative">−{money(pettyCashOutflows)}</strong></div>
           <span className="petty-cash-count">{pettyCash.length} {pettyCash.length === 1 ? 'expense' : 'expenses'}</span>
         </div>
         <BrowseControls count={pettyCash.length} query={pettyCashSearch} onQueryChange={setPettyCashSearch} scrollRef={pettyCashListRef} placeholder="Search expenses..." />
@@ -1967,7 +1988,7 @@ function SaleModal({ products, cart, setCart, addToCart, includeVat, setIncludeV
   )
 }
 
-function ProductModal({ product, close, onSave }: { product?: Product | null; close: () => void; onSave: (payload: { name: string; category: string; stock: number; unit: string; buy: number; sell: number; min: number }) => Promise<void> }) {
+function ProductModal({ product, close, onSave }: { product?: Product | null; close: () => void; onSave: (payload: ProductFormInput) => Promise<void> }) {
   const [name, setName] = useState(product?.name ?? '')
   const [category, setCategory] = useState(product?.category ?? 'Groceries')
   const [stock, setStock] = useState(product ? String(product.stock) : '')
@@ -1975,6 +1996,10 @@ function ProductModal({ product, close, onSave }: { product?: Product | null; cl
   const [buy, setBuy] = useState(product ? String(product.buy) : '')
   const [sell, setSell] = useState(product ? String(product.sell) : '')
   const [min, setMin] = useState(product ? String(product.min) : '5')
+  const [openingPayment, setOpeningPayment] = useState<'cash' | 'credit'>('cash')
+  const [supplier, setSupplier] = useState('')
+  const [paymentMethod, setPaymentMethod] = useState('cash')
+  const openingValue = Number(stock || 0) * Number(buy || 0)
 
   const save = async () => {
     const payload = {
@@ -1985,8 +2010,9 @@ function ProductModal({ product, close, onSave }: { product?: Product | null; cl
       buy: Number(buy || 0),
       sell: Number(sell || 0),
       min: Number(min || 5),
+      ...(!product && openingValue > 0 ? { openingPayment, supplier: supplier.trim(), paymentMethod } : {}),
     }
-    if (!payload.name || payload.stock < 0) {
+    if (!payload.name || payload.stock < 0 || (!product && openingValue > 0 && openingPayment === 'credit' && !supplier.trim())) {
       return
     }
     await onSave(payload)
@@ -2034,7 +2060,16 @@ function ProductModal({ product, close, onSave }: { product?: Product | null; cl
           <input type="number" value={min} onChange={(event) => setMin(event.target.value)} placeholder="5" />
         </label>
       </div>
-      <button className="primary-btn full" onClick={() => void save()}>
+      {!product && openingValue > 0 && <section className="opening-stock-payment">
+        <div className="opening-stock-summary"><span>Opening stock value</span><strong>{money(openingValue)}</strong><small>Opening quantity × buying price</small></div>
+        <fieldset className="payment-choice">
+          <legend>How was this opening stock purchased?</legend>
+          <label><input type="radio" name="opening-stock-payment" checked={openingPayment === 'cash'} onChange={() => setOpeningPayment('cash')} /> Cash / paid now</label>
+          <label><input type="radio" name="opening-stock-payment" checked={openingPayment === 'credit'} onChange={() => setOpeningPayment('credit')} /> Credit / pay supplier later</label>
+        </fieldset>
+        {openingPayment === 'credit' ? <label className="opening-stock-field">Supplier<input value={supplier} onChange={(event) => setSupplier(event.target.value)} placeholder="Supplier name" /></label> : <label className="opening-stock-field">Paid from<select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)}><option value="cash">Main cash</option><option value="petty_cash">Petty cash</option><option value="bank">Bank</option><option value="mobile_money">Mobile Money</option><option value="other">Other</option></select></label>}
+      </section>}
+      <button className="primary-btn full" disabled={!name.trim() || stock === '' || Number(stock) < 0 || (!product && openingValue > 0 && !openingPayment) || (!product && openingValue > 0 && openingPayment === 'credit' && !supplier.trim())} onClick={() => void save()}>
         {product ? 'Update product' : 'Save product'} <Check />
       </button>
     </Modal>
@@ -2231,7 +2266,8 @@ function InventoryPurchaseModal({ products, close, onSave }: { products: Product
   const [productId, setProductId] = useState('')
   const [items, setItems] = useState<{ productId: number; qty: number; unitCost: number }[]>([])
   const [vatAmount, setVatAmount] = useState('0')
-  const [paidAmount, setPaidAmount] = useState('0')
+  const [paymentTerms, setPaymentTerms] = useState<'cash' | 'credit' | 'partial' | ''>('')
+  const [partialPaidAmount, setPartialPaidAmount] = useState('')
   const [paymentMethod, setPaymentMethod] = useState('cash')
   const [error, setError] = useState('')
   const [itemMessage, setItemMessage] = useState('Select a product to enable Add item.')
@@ -2240,6 +2276,8 @@ function InventoryPurchaseModal({ products, close, onSave }: { products: Product
   const addedProductId = useRef<number | null>(null)
   const subtotal = items.reduce((sum, item) => sum + item.qty * item.unitCost, 0)
   const total = subtotal + Number(vatAmount || 0)
+  const paidAmount = paymentTerms === 'cash' ? total : paymentTerms === 'credit' ? 0 : Number(partialPaidAmount || 0)
+  const paymentTermsValid = paymentTerms === 'cash' || paymentTerms === 'credit' || (paymentTerms === 'partial' && paidAmount > 0 && paidAmount < total)
 
   useEffect(() => {
     if (addedProductId.current === null) return
@@ -2268,7 +2306,7 @@ function InventoryPurchaseModal({ products, close, onSave }: { products: Product
     setSaving(true)
     setError('')
     try {
-      await onSave({ supplier: supplier.trim(), date, items, vatAmount: Number(vatAmount || 0), paidAmount: Number(paidAmount || 0), paymentMethod })
+      await onSave({ supplier: supplier.trim(), date, items, vatAmount: Number(vatAmount || 0), paidAmount: Number(paidAmount || 0), paymentMethod: paymentTerms === 'credit' ? 'credit' : paymentMethod })
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'Unable to record inventory purchase.')
       setSaving(false)
@@ -2304,12 +2342,21 @@ function InventoryPurchaseModal({ products, close, onSave }: { products: Product
       </div>
       <div className="form-grid purchase-payment-fields">
         <label>Input VAT<input type="number" min="0" value={vatAmount} onChange={(event) => setVatAmount(event.target.value)} /></label>
-        <label>Amount paid now<input type="number" min="0" max={total} value={paidAmount} onChange={(event) => setPaidAmount(event.target.value)} /></label>
-        <label>Payment method<select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)}><option value="cash">Cash</option><option value="petty_cash">Petty cash</option><option value="bank">Bank</option><option value="mobile_money">Mobile Money</option><option value="other">Other</option></select></label>
       </div>
-      <div className="payment-remaining"><span>Inventory subtotal {money(subtotal)} · Purchase total {money(total)}</span><strong>Supplier balance {money(Math.max(0, total - Number(paidAmount || 0)))}</strong></div>
+      <fieldset className="payment-choice purchase-terms-choice">
+        <legend>How was this inventory purchased?</legend>
+        <label><input type="radio" name="purchase-terms" value="cash" checked={paymentTerms === 'cash'} onChange={() => setPaymentTerms('cash')} /> Cash / paid now</label>
+        <label><input type="radio" name="purchase-terms" value="credit" checked={paymentTerms === 'credit'} onChange={() => setPaymentTerms('credit')} /> Credit / pay supplier later</label>
+        <label><input type="radio" name="purchase-terms" value="partial" checked={paymentTerms === 'partial'} onChange={() => setPaymentTerms('partial')} /> Partial payment</label>
+      </fieldset>
+      {paymentTerms === 'partial' && <div className="form-grid purchase-payment-fields">
+        <label>Amount paid now<input type="number" min="0" max={total} value={partialPaidAmount} onChange={(event) => setPartialPaidAmount(event.target.value)} /></label>
+        <label>Payment account<select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)}><option value="cash">Cash</option><option value="petty_cash">Petty cash</option><option value="bank">Bank</option><option value="mobile_money">Mobile Money</option><option value="other">Other</option></select></label>
+      </div>}
+      {paymentTerms === 'cash' && <div className="form-grid purchase-payment-fields"><label>Payment account<select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)}><option value="cash">Cash</option><option value="petty_cash">Petty cash</option><option value="bank">Bank</option><option value="mobile_money">Mobile Money</option><option value="other">Other</option></select></label></div>}
+      <div className="payment-remaining"><span>Inventory subtotal {money(subtotal)} · Purchase total {money(total)} · Paid now {money(paidAmount)}</span><strong>Supplier balance {money(Math.max(0, total - paidAmount))}</strong></div>
       {error ? <div className="error-text">{error}</div> : null}
-      <button className="primary-btn full" disabled={saving || !supplier.trim() || !items.length || items.some((item) => item.qty <= 0 || item.unitCost < 0) || Number(vatAmount) < 0 || Number(paidAmount) < 0 || Number(paidAmount) > total} onClick={() => void save()}>{saving ? 'Saving purchase…' : 'Save inventory purchase'} <Check /></button>
+      <button className="primary-btn full" disabled={saving || !supplier.trim() || !items.length || !paymentTermsValid || items.some((item) => item.qty <= 0 || item.unitCost < 0) || Number(vatAmount) < 0 || paidAmount < 0 || paidAmount > total} onClick={() => void save()}>{saving ? 'Saving purchase…' : paymentTerms === 'credit' ? 'Save credit purchase' : 'Save inventory purchase'} <Check /></button>
     </Modal>
   )
 }
