@@ -103,15 +103,6 @@ type InventoryPurchase = {
   items: { productId: number; name: string; qty: number; unit: string; unitCost: number }[]
 }
 
-type CashMovement = {
-  id: string
-  date: string
-  account: string
-  type: string
-  amount: number
-  reference: string
-}
-
 type DebtPayment = {
   id: string
   debtId: number
@@ -168,6 +159,8 @@ export default function Page() {
   const [username, setUsername] = useState('admin')
   const [password, setPassword] = useState('')
   const [loginError, setLoginError] = useState('')
+  const [deleteConfirmation, setDeleteConfirmation] = useState<string | null>(null)
+  const deleteConfirmationResolver = useRef<((confirmed: boolean) => void) | null>(null)
   const [page, setPage] = useState('Dashboard')
   const [mobileNav, setMobileNav] = useState(false)
   const [products, setProducts] = useState<Product[]>([])
@@ -175,7 +168,6 @@ export default function Page() {
   const [debts, setDebts] = useState<Debt[]>([])
   const [pettyCash, setPettyCash] = useState<PettyCash[]>([])
   const [purchases, setPurchases] = useState<InventoryPurchase[]>([])
-  const [cashMovements, setCashMovements] = useState<CashMovement[]>([])
   const [debtPayments, setDebtPayments] = useState<DebtPayment[]>([])
   const [accountBalances, setAccountBalances] = useState({ cash: 0, bank: 0, mobile_money: 0, other: 0 })
   const [businessExpenses, setBusinessExpenses] = useState<BusinessExpense[]>([])
@@ -196,10 +188,21 @@ export default function Page() {
   const [editingPurchase, setEditingPurchase] = useState<InventoryPurchase | null>(null)
   const [editingPettyCash, setEditingPettyCash] = useState<PettyCash | null>(null)
   const [editingDebtPayment, setEditingDebtPayment] = useState<DebtPayment | null>(null)
-  const [cashMovementSearch, setCashMovementSearch] = useState('')
   const [search, setSearch] = useState('')
   const [includeVat, setIncludeVat] = useState(true)
   const [cart, setCart] = useState<CartItem[]>([])
+
+  const requestDeleteConfirmation = (message: string) => new Promise<boolean>((resolve) => {
+    deleteConfirmationResolver.current = resolve
+    setDeleteConfirmation(message)
+  })
+
+  const resolveDeleteConfirmation = (confirmed: boolean) => {
+    const resolve = deleteConfirmationResolver.current
+    deleteConfirmationResolver.current = null
+    setDeleteConfirmation(null)
+    resolve?.(confirmed)
+  }
 
   const loadData = async () => {
     const response = await fetch('/api/data', { cache: 'no-store' })
@@ -217,7 +220,6 @@ export default function Page() {
     setDebts(payload.debts ?? [])
     setPettyCash(payload.pettyCash ?? [])
     setPurchases(payload.purchases ?? [])
-    setCashMovements(payload.cashMovements ?? [])
     setDebtPayments(payload.debtPayments ?? [])
     setAccountBalances(payload.accountBalances ?? { cash: 0, bank: 0, mobile_money: 0, other: 0 })
     setBusinessExpenses(payload.expenses ?? [])
@@ -417,7 +419,7 @@ export default function Page() {
     const prompt = sale.creditDebtId
       ? `Delete credit sale ${sale.id}? This is only possible before any customer payment has been recorded.`
       : `Delete sale ${sale.id}? Its items will be returned to stock.`
-    if (!window.confirm(prompt)) return
+    if (!(await requestDeleteConfirmation(prompt))) return
     const response = await fetch(`/api/sales/${encodeURIComponent(sale.id)}`, { method: 'DELETE' })
     const payload = await response.json()
     if (!response.ok || !payload.ok) {
@@ -478,11 +480,11 @@ export default function Page() {
   }
 
   const deleteDebt = async (debt: Debt) => {
-    if (!window.confirm(`Delete ${debt.name} from the debt ledger? This cannot be undone.`)) return
+    if (!(await requestDeleteConfirmation(`Delete ${debt.name} from the debt ledger? This cannot be undone.`))) return
     const response = await fetch(`/api/debts/${debt.id}`, { method: 'DELETE' })
     const payload = await response.json()
     if (!response.ok || !payload.ok) {
-      window.alert(payload.error ?? 'Unable to delete debt record.')
+      setLoginError(payload.error ?? 'Unable to delete debt record.')
       return
     }
     setDebts((current) => current.filter((entry) => entry.id !== debt.id))
@@ -519,7 +521,7 @@ export default function Page() {
   }
 
   const deleteProduct = async (product: Product) => {
-    if (!window.confirm(`Delete ${product.name}? This cannot be undone.`)) {
+    if (!(await requestDeleteConfirmation(`Delete ${product.name}? This cannot be undone.`))) {
       return
     }
     const response = await fetch(`/api/products/${product.id}`, { method: 'DELETE' })
@@ -614,7 +616,7 @@ export default function Page() {
   }
 
   const deletePettyCash = async (entry: PettyCash) => {
-    if (!window.confirm(`Delete petty-cash transaction "${entry.reason}"? Related balances will be reversed.`)) return
+    if (!(await requestDeleteConfirmation(`Delete petty-cash transaction "${entry.reason}"? Related balances will be reversed.`))) return
     const response = await fetch(`/api/petty-cash/${encodeURIComponent(entry.id)}`, { method: 'DELETE' })
     const payload = await response.json()
     if (!response.ok || !payload.ok) {
@@ -649,7 +651,7 @@ export default function Page() {
   }
 
   const deleteInventoryPurchase = async (purchase: InventoryPurchase) => {
-    if (!window.confirm(`Delete inventory purchase ${purchase.id}? Stock and the associated payable/payment will be reversed.`)) return
+    if (!(await requestDeleteConfirmation(`Delete inventory purchase ${purchase.id}? Stock and the associated payable/payment will be reversed.`))) return
     const response = await fetch(`/api/purchases/${encodeURIComponent(purchase.id)}`, { method: 'DELETE' })
     const payload = await response.json()
     if (!response.ok || !payload.ok) {
@@ -684,7 +686,7 @@ export default function Page() {
   }
 
   const deleteBusinessExpense = async (expense: BusinessExpense) => {
-    if (!window.confirm(`Delete expense "${expense.description}"? Its recorded balances will be reversed.`)) return
+    if (!(await requestDeleteConfirmation(`Delete expense "${expense.description}"? Its recorded balances will be reversed.`))) return
     const response = await fetch(`/api/expenses/${encodeURIComponent(expense.id)}`, { method: 'DELETE' })
     const payload = await response.json()
     if (!response.ok || !payload.ok) {
@@ -694,46 +696,6 @@ export default function Page() {
     await loadData()
   }
 
-  const deleteCashMovement = async (movement: CashMovement) => {
-    if (!window.confirm(`Delete this ${movement.type.replaceAll('_', ' ')} transaction? Related balances and records will be reversed.`)) return
-    const isSaleReceipt = movement.type === 'sale_receipt'
-      || (movement.type === 'customer_receipt' && movement.id.startsWith('PAY-LEGACY-'))
-    const endpoint = isSaleReceipt
-      ? `/api/sales/${encodeURIComponent(movement.reference)}`
-      : `/api/cash-movements/${encodeURIComponent(movement.id)}`
-    const response = await fetch(endpoint, { method: 'DELETE' })
-    const payload = await response.json()
-    if (!response.ok || !payload.ok) {
-      setLoginError(payload.error ?? 'Unable to delete cash movement.')
-      return
-    }
-    await loadData()
-  }
-
-  const editCashMovement = (movement: CashMovement) => {
-    if (movement.type === 'sale_receipt') {
-      const sale = sales.find((entry) => entry.id === movement.reference)
-      if (sale && !sale.creditDebtId) return setEditingSale(sale)
-    }
-    if (movement.type === 'inventory_purchase_payment') {
-      const purchase = purchases.find((entry) => entry.id === movement.reference)
-      if (purchase) return setEditingPurchase(purchase)
-    }
-    if (movement.type === 'business_expense_payment') {
-      const expense = businessExpenses.find((entry) => entry.id === movement.reference)
-      if (expense) return setEditingExpense(expense)
-    }
-    if (movement.type === 'petty_cash_transfer') {
-      const entry = pettyCash.find((candidate) => candidate.id === movement.reference)
-      if (entry) return setEditingPettyCash(entry)
-    }
-    if (movement.type === 'customer_receipt' || movement.type === 'supplier_payment') {
-      const payment = debtPayments.find((entry) => entry.id === movement.reference)
-      if (payment) return setEditingDebtPayment(payment)
-    }
-    setLoginError('This activity row has no editable source record.')
-  }
-
   const handleLogout = () => {
     setLoggedIn(false)
     setProducts([])
@@ -741,7 +703,6 @@ export default function Page() {
     setDebts([])
     setPettyCash([])
     setPurchases([])
-    setCashMovements([])
     setDebtPayments([])
     setAccountBalances({ cash: 0, bank: 0, mobile_money: 0, other: 0 })
     setBusinessExpenses([])
@@ -918,7 +879,7 @@ export default function Page() {
           {page === 'Inventory' && (
             <Inventory products={products} setShowProduct={setShowProduct} setEditingProduct={setEditingProduct} deleteProduct={deleteProduct} search={search} setSearch={setSearch} />
           )}
-          {page === 'Finances' && <FinancePage debts={debts} pettyCash={pettyCash} purchases={purchases} expenses={businessExpenses} cashMovements={cashMovements} accountBalances={accountBalances} cashMovementSearch={cashMovementSearch} setCashMovementSearch={setCashMovementSearch} onDeleteMovement={deleteCashMovement} onEditMovement={editCashMovement} onEditPettyCash={setEditingPettyCash} onDeletePettyCash={deletePettyCash} onEditPurchase={setEditingPurchase} onDeletePurchase={deleteInventoryPurchase} onEditExpense={setEditingExpense} onDeleteExpense={deleteBusinessExpense} setShowDebt={setShowDebt} setShowPurchase={() => setShowPurchase(true)} setShowExpense={() => setShowExpense(true)} onReceivePettyCash={() => { setPettyCashAction('receive'); setShowPettyCash(true) }} onWithdrawPettyCash={() => { setPettyCashAction('withdraw'); setShowPettyCash(true) }} onRecordDrawing={() => { setPettyCashAction('drawing'); setShowPettyCash(true) }} onPayDebt={setPayingDebt} onEditDebt={setEditingDebt} onDeleteDebt={deleteDebt} />}
+          {page === 'Finances' && <FinancePage debts={debts} pettyCash={pettyCash} purchases={purchases} expenses={businessExpenses} accountBalances={accountBalances} onEditPettyCash={setEditingPettyCash} onDeletePettyCash={deletePettyCash} onEditPurchase={setEditingPurchase} onDeletePurchase={deleteInventoryPurchase} onEditExpense={setEditingExpense} onDeleteExpense={deleteBusinessExpense} setShowDebt={setShowDebt} setShowPurchase={() => setShowPurchase(true)} setShowExpense={() => setShowExpense(true)} onReceivePettyCash={() => { setPettyCashAction('receive'); setShowPettyCash(true) }} onWithdrawPettyCash={() => { setPettyCashAction('withdraw'); setShowPettyCash(true) }} onRecordDrawing={() => { setPettyCashAction('drawing'); setShowPettyCash(true) }} onPayDebt={setPayingDebt} onEditDebt={setEditingDebt} onDeleteDebt={deleteDebt} />}
           {page === 'Reports' && <Reports products={products} sales={sales} pettyCash={pettyCash} purchases={purchases} expenses={businessExpenses} totals={totals} />}
         </main>
       </div>
@@ -1049,6 +1010,7 @@ export default function Page() {
       {receipt && <ReceiptModal sale={receipt} close={() => setReceipt(null)} />}
       {editingSale && <SaleEditModal sale={editingSale} products={products} close={() => setEditingSale(null)} onSave={(items, date, vat) => updateSale(editingSale, items, date, vat)} />}
       {payingDebt && <DebtPaymentModal debt={payingDebt} close={() => setPayingDebt(null)} onPay={(amount, method) => settleDebt(payingDebt, amount, method)} />}
+      {deleteConfirmation && <DeleteConfirmationModal message={deleteConfirmation} onCancel={() => resolveDeleteConfirmation(false)} onConfirm={() => resolveDeleteConfirmation(true)} />}
     </div>
   )
 }
@@ -1569,7 +1531,7 @@ function DebtPaymentEditModal({ payment, close, onSave }: { payment: DebtPayment
   )
 }
 
-function FinancePage({ debts, pettyCash, purchases, expenses, cashMovements, accountBalances, cashMovementSearch, setCashMovementSearch, onDeleteMovement, onEditMovement, onEditPettyCash, onDeletePettyCash, onEditPurchase, onDeletePurchase, onEditExpense, onDeleteExpense, setShowDebt, setShowPurchase, setShowExpense, onReceivePettyCash, onWithdrawPettyCash, onRecordDrawing, onPayDebt, onEditDebt, onDeleteDebt }: any) {
+function FinancePage({ debts, pettyCash, purchases, expenses, accountBalances, onEditPettyCash, onDeletePettyCash, onEditPurchase, onDeletePurchase, onEditExpense, onDeleteExpense, setShowDebt, setShowPurchase, setShowExpense, onReceivePettyCash, onWithdrawPettyCash, onRecordDrawing, onPayDebt, onEditDebt, onDeleteDebt }: any) {
   const customers = debts.filter((item: Debt) => item.kind === 'customer')
   const suppliers = debts.filter((item: Debt) => item.kind === 'supplier')
   const [customerSearch, setCustomerSearch] = useState('')
@@ -1592,7 +1554,6 @@ function FinancePage({ debts, pettyCash, purchases, expenses, cashMovements, acc
   const visibleDrawings = ownerDrawings.filter((entry: PettyCash) => `${entry.reason} ${entry.category ?? ''} ${entry.date} ${entry.amount}`.toLowerCase().includes(drawingSearch.trim().toLowerCase()))
   const visibleExpenses = expenses.filter((entry: BusinessExpense) => `${entry.category} ${entry.description} ${entry.supplier} ${entry.date} ${entry.paymentStatus}`.toLowerCase().includes(expenseSearch.trim().toLowerCase()))
   const visiblePurchases = purchases.filter((entry: InventoryPurchase) => `${entry.supplier} ${entry.id} ${entry.date} ${entry.items.map((item) => item.name).join(' ')} ${entry.paymentMethod}`.toLowerCase().includes(purchaseSearch.trim().toLowerCase()))
-  const visibleCashMovements = cashMovements.filter((entry: CashMovement) => `${entry.type} ${entry.account} ${entry.date} ${entry.reference} ${entry.amount}`.toLowerCase().includes(cashMovementSearch.trim().toLowerCase()))
   const pettyCashInflows = pettyCash.filter((entry: PettyCash) => ['owner_contribution', 'customer_payment', 'cash_in', 'other_income', 'bank_transfer_in', 'cash_transfer_in'].includes(entry.type)).reduce((sum: number, entry: PettyCash) => sum + Number(entry.amount), 0)
   const pettyCashOutflows = pettyCashEntries.filter((entry: PettyCash) => !['owner_contribution', 'customer_payment', 'cash_in', 'other_income', 'bank_transfer_in', 'cash_transfer_in'].includes(entry.type)).reduce((sum: number, entry: PettyCash) => sum + Number(entry.amount), 0)
   const ownerDrawingTotal = ownerDrawings.reduce((sum: number, entry: PettyCash) => sum + Number(entry.amount), 0)
@@ -1653,26 +1614,6 @@ function FinancePage({ debts, pettyCash, purchases, expenses, cashMovements, acc
           )) : <div className="empty-state">{suppliers.length ? 'No matching suppliers.' : 'No supplier debts recorded.'}</div>}
           </div>
         </div>
-      </div>
-
-      <div className="panel account-movements-panel">
-        <div className="account-movements-header">
-          <div className="account-movements-title">
-            <span className="account-movements-mark"><CircleDollarSign /></span>
-            <div><span className="eyebrow">ACCOUNT LEDGER</span><h2>Cash and bank activity</h2><p>Each movement changes an account balance, not profit by itself.</p></div>
-          </div>
-          <span className="count-badge teal-bg">{visibleCashMovements.length} / {cashMovements.length}</span>
-        </div>
-        <label className="account-movement-search"><Search /><input aria-label="Search cash and bank activity" placeholder="Search type, account, date or reference..." value={cashMovementSearch} onChange={(event) => setCashMovementSearch(event.target.value)} />{cashMovementSearch && <button type="button" aria-label="Clear activity search" onClick={() => setCashMovementSearch('')}><X /></button>}</label>
-        {visibleCashMovements.length ? <div className={`account-movement-list${visibleCashMovements.length > 3 ? ' is-scrollable' : ''}`}>
-          {visibleCashMovements.map((movement: CashMovement) => <article className="account-movement-row" key={movement.id}>
-            <span className={`movement-indicator ${movement.amount >= 0 ? 'is-inflow' : 'is-outflow'}`}>{movement.amount >= 0 ? '+' : '−'}</span>
-            <span className="movement-details"><strong>{movement.type.replaceAll('_', ' ')}</strong><small>{movement.date} · {movement.account.replaceAll('_', ' ')} · Ref {movement.reference || movement.id}</small></span>
-            <strong className={`movement-amount ${movement.amount >= 0 ? 'green-text' : 'negative'}`}>{movement.amount >= 0 ? '+' : '−'}{money(Math.abs(movement.amount))}</strong>
-            <button className="movement-edit" type="button" aria-label={`Edit ${movement.type.replaceAll('_', ' ')} ${movement.reference || movement.id}`} title="Edit source transaction" onClick={() => onEditMovement(movement)}><Pencil /></button>
-            <button className="movement-delete" type="button" aria-label={`Delete ${movement.type.replaceAll('_', ' ')} ${movement.reference || movement.id}`} title="Delete transaction and reverse balances" onClick={() => void onDeleteMovement(movement)}><Trash2 /></button>
-          </article>)}
-        </div> : <div className="empty-state">{cashMovements.length ? 'No matching transactions.' : 'No cash or bank movements recorded yet.'}</div>}
       </div>
 
       <div className="panel business-expense-history">
@@ -2709,5 +2650,23 @@ function Modal({ title, close, children }: { title: string; close: () => void; c
         {children}
       </div>
     </div>
+  )
+}
+
+function DeleteConfirmationModal({ message, onCancel, onConfirm }: { message: string; onCancel: () => void; onConfirm: () => void }) {
+  return (
+    <Modal title="Confirm deletion" close={onCancel}>
+      <div className="delete-confirmation">
+        <span className="delete-confirmation-icon"><Trash2 /></span>
+        <div className="delete-confirmation-copy">
+          <strong>This action may reverse related records.</strong>
+          <p>{message}</p>
+        </div>
+      </div>
+      <div className="delete-confirmation-actions">
+        <button className="outline-btn" type="button" onClick={onCancel}>Cancel</button>
+        <button className="danger-btn" type="button" onClick={onConfirm}>OK <Trash2 /></button>
+      </div>
+    </Modal>
   )
 }

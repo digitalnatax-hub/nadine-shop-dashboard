@@ -119,7 +119,15 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
         id: Number(sale.creditDebtId),
         $or: [{ paymentSaleIds: id }, { saleId: id }],
       })
-      if (!debt) return NextResponse.json({ ok: false, error: 'The settled debt record was not found.' }, { status: 409 })
+      if (!debt) {
+        if (sale.paymentAmount === undefined) {
+          return NextResponse.json({ ok: false, error: 'The settled debt record was not found.' }, { status: 409 })
+        }
+        const removedPayment = await sales.deleteOne({ _id: sale._id, paymentAmount: sale.paymentAmount })
+        if (!removedPayment.deletedCount) return NextResponse.json({ ok: false, error: 'The legacy payment changed before it could be deleted.' }, { status: 409 })
+        await (await getCollection<any>('cash_movements')).deleteOne({ id: `PAY-LEGACY-${id}` })
+        return NextResponse.json({ ok: true, removedOrphanedPayment: true })
+      }
       const paymentAmount = Number(sale.paymentAmount ?? sale.total ?? 0)
       const oldPaidAmount = Number(debt.paidAmount ?? debt.original ?? 0)
       const oldBalance = Number(debt.amount ?? 0)

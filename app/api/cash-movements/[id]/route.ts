@@ -11,6 +11,12 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
     movement = await movements.findOne({ id })
     if (!movement) return NextResponse.json({ ok: false, error: 'Cash movement not found.' }, { status: 404 })
     if (movement.type === 'sale_receipt') {
+      const linkedSale = await (await getCollection<any>('sales')).findOne({ id: movement.reference })
+      if (!linkedSale) {
+        const removedMovement = await movements.deleteOne({ _id: movement._id, type: 'sale_receipt' })
+        if (!removedMovement.deletedCount) return NextResponse.json({ ok: false, error: 'The orphaned sale receipt changed before it could be deleted.' }, { status: 409 })
+        return NextResponse.json({ ok: true, removedOrphanedReceipt: true })
+      }
       return NextResponse.json({ ok: false, error: 'This receipt must be reversed from its linked sale.' }, { status: 409 })
     }
 
