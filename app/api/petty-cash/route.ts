@@ -8,7 +8,7 @@ export async function GET() {
     let balance = 0
     const withBalances = entries.map((entry) => {
       const amount = Number(entry.amount ?? 0)
-      balance += ['cash_in', 'owner_contribution', 'customer_payment', 'other_income'].includes(entry.type) ? amount : -amount
+      balance += ['cash_in', 'owner_contribution', 'customer_payment', 'other_income', 'bank_transfer_in', 'cash_transfer_in'].includes(entry.type) ? amount : -amount
       return { ...entry, runningBalance: balance }
     })
     return NextResponse.json({ ok: true, pettyCash: withBalances.reverse().map((entry) => ({
@@ -37,7 +37,7 @@ export async function POST(request: Request) {
     const amount = Number(body.amount ?? 0)
     const reason = String(body.reason ?? '').trim()
     const date = String(body.date ?? new Date().toISOString().slice(0, 10))
-    const type = ['expense', 'other_expense', 'other_income', 'transfer', 'owner_drawing', 'owner_contribution'].includes(body.type) ? body.type : null
+    const type = ['expense', 'other_expense', 'other_income', 'transfer', 'owner_drawing', 'owner_contribution', 'bank_transfer_in', 'cash_transfer_in'].includes(body.type) ? body.type : null
     const vatAmount = Number(body.vatAmount ?? 0)
     const category = String(body.category ?? (type === 'owner_drawing' ? 'Personal withdrawal' : type === 'owner_contribution' ? 'Owner capital contribution' : 'Operating expense')).trim()
     const paymentMethod = String(body.paymentMethod ?? 'cash')
@@ -51,9 +51,11 @@ export async function POST(request: Request) {
 
     const entry = { id: `PC-${Date.now().toString().slice(-8)}`, date, amount, reason, type, category, vatAmount, paymentMethod: type === 'transfer' ? paymentMethod : 'petty_cash', reference: String(body.reference ?? '').trim(), user: String(body.user ?? 'unknown'), createdAt: new Date() }
     await (await getCollection<any>('petty_cash')).insertOne(entry)
-    if (type === 'transfer') {
+    if (['transfer', 'bank_transfer_in', 'cash_transfer_in'].includes(type)) {
       try {
-        await (await getCollection<any>('cash_movements')).insertOne({ id: `TRANSFER-${entry.id}`, date, account: paymentMethod, type: 'petty_cash_transfer', amount, reference: entry.id, createdAt: new Date() })
+        const account = type === 'bank_transfer_in' ? 'bank' : type === 'cash_transfer_in' ? 'cash' : paymentMethod
+        const transferAmount = type === 'transfer' ? amount : -amount
+        await (await getCollection<any>('cash_movements')).insertOne({ id: `TRANSFER-${entry.id}`, date, account, type: 'petty_cash_transfer', amount: transferAmount, reference: entry.id, user: String(body.user ?? 'unknown'), createdAt: new Date() })
       } catch (error) {
         await (await getCollection<any>('petty_cash')).deleteOne({ id: entry.id })
         throw error

@@ -111,7 +111,7 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
         })
       }
     } else if (movement.type === 'petty_cash_transfer') {
-      const removed = await (await getCollection<any>('petty_cash')).deleteOne({ id: movement.reference, type: 'transfer' })
+      const removed = await (await getCollection<any>('petty_cash')).deleteOne({ id: movement.reference, type: { $in: ['transfer', 'bank_transfer_in', 'cash_transfer_in'] } })
       if (!removed.deletedCount) throw new Error('The paired petty-cash transfer was not found.')
     } else {
       throw new Error('This movement type cannot be reversed from the activity ledger.')

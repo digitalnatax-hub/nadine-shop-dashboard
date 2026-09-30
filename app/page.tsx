@@ -77,7 +77,7 @@ type PettyCash = {
   date: string
   amount: number
   reason: string
-  type: 'expense' | 'business_expense_payment' | 'other_expense' | 'other_income' | 'transfer' | 'owner_drawing' | 'owner_contribution' | 'supplier_payment' | 'customer_payment' | 'inventory_purchase_payment' | 'cash_in'
+  type: 'expense' | 'business_expense_payment' | 'other_expense' | 'other_income' | 'transfer' | 'owner_drawing' | 'owner_contribution' | 'bank_transfer_in' | 'cash_transfer_in' | 'supplier_payment' | 'customer_payment' | 'inventory_purchase_payment' | 'cash_in'
   category?: string
   vatAmount?: number
   paymentMethod?: string
@@ -167,6 +167,7 @@ export default function Page() {
   const [showSale, setShowSale] = useState(false)
   const [showDebt, setShowDebt] = useState(false)
   const [showPettyCash, setShowPettyCash] = useState(false)
+  const [pettyCashAction, setPettyCashAction] = useState<'receive' | 'withdraw'>('withdraw')
   const [showPurchase, setShowPurchase] = useState(false)
   const [showExpense, setShowExpense] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
@@ -217,7 +218,7 @@ export default function Page() {
     const todayOtherIncome = todayPettyCash.filter((entry) => entry.type === 'other_income').reduce((sum, entry) => sum + Number(entry.amount), 0)
     const todayOtherExpenses = todayPettyCash.filter((entry) => entry.type === 'other_expense').reduce((sum, entry) => sum + Number(entry.amount) - Number(entry.vatAmount ?? 0), 0)
     const todayExpenseRecords = businessExpenses.filter((entry) => entry.date === today)
-    const pettyCashBalance = pettyCash.reduce((balance, entry) => balance + (['owner_contribution', 'customer_payment', 'cash_in', 'other_income'].includes(entry.type) ? Number(entry.amount) : -Number(entry.amount)), 0)
+    const pettyCashBalance = pettyCash.reduce((balance, entry) => balance + (['owner_contribution', 'customer_payment', 'cash_in', 'other_income', 'bank_transfer_in', 'cash_transfer_in'].includes(entry.type) ? Number(entry.amount) : -Number(entry.amount)), 0)
     const totalRevenue = recognizedSales.reduce((sum, entry) => sum + getSaleRevenue(entry), 0)
     const totalCogs = recognizedSales.flatMap((entry) => entry.items ?? []).reduce((sum, item) => sum + Number(item.buy ?? 0) * Number(item.qty ?? 0), 0)
     const totalOutputVat = recognizedSales.reduce((sum, entry) => sum + getSaleVat(entry), 0)
@@ -226,7 +227,7 @@ export default function Page() {
     const totalOtherIncome = pettyCash.filter((entry) => entry.type === 'other_income').reduce((sum, entry) => sum + Number(entry.amount), 0)
     const totalOtherExpenses = pettyCash.filter((entry) => entry.type === 'other_expense').reduce((sum, entry) => sum + Number(entry.amount) - Number(entry.vatAmount ?? 0), 0)
     const totalInputVat = pettyCash.filter((entry) => ['expense', 'other_expense'].includes(entry.type)).reduce((sum, entry) => sum + Number(entry.vatAmount ?? 0), 0)
-      + purchases.reduce((sum, purchase) => sum + Number(purchase.vatAmount ?? 0), 0)
+      + purchases.reduce((sum, purchase) => sum + Number(purchase.vatAmount ?? 0) * Math.min(1, Number(purchase.paidAmount ?? 0) / Math.max(Number(purchase.total ?? 0), 1)), 0)
       + businessExpenses.reduce((sum, entry) => sum + Number(entry.vatAmount) * Math.min(1, Number(entry.paidAmount) / Math.max(Number(entry.total), 1)), 0)
     const totalNetProfit = totalRevenue - totalCogs - totalOperatingExpenses + totalOtherIncome - totalOtherExpenses
     const totalReceivables = debts.filter((entry) => entry.kind === 'customer').reduce((sum, entry) => sum + Number(entry.amount), 0)
@@ -246,7 +247,7 @@ export default function Page() {
       owed: debts.filter((entry) => entry.kind === 'customer').reduce((sum, entry) => sum + Number(entry.amount), 0),
       owe: debts.filter((entry) => entry.kind === 'supplier').reduce((sum, entry) => sum + Number(entry.amount), 0),
       inventory: products.reduce((sum, product) => sum + Number(product.stock) * Number(product.buy), 0),
-      pettyCashBalance: pettyCash.reduce((balance, entry) => balance + (['owner_contribution', 'customer_payment', 'cash_in', 'other_income'].includes(entry.type) ? Number(entry.amount) : -Number(entry.amount)), 0),
+      pettyCashBalance,
       ownerDrawings: pettyCash.filter((entry) => entry.type === 'owner_drawing').reduce((sum, entry) => sum + Number(entry.amount), 0),
       ownerContributions: pettyCash.filter((entry) => entry.type === 'owner_contribution').reduce((sum, entry) => sum + Number(entry.amount), 0),
       cash: accountBalances.cash,
@@ -766,7 +767,7 @@ export default function Page() {
           {page === 'Inventory' && (
             <Inventory products={products} setShowProduct={setShowProduct} setEditingProduct={setEditingProduct} deleteProduct={deleteProduct} search={search} setSearch={setSearch} />
           )}
-          {page === 'Finances' && <FinancePage debts={debts} pettyCash={pettyCash} purchases={purchases} expenses={businessExpenses} cashMovements={cashMovements} accountBalances={accountBalances} cashMovementSearch={cashMovementSearch} setCashMovementSearch={setCashMovementSearch} onDeleteMovement={deleteCashMovement} setShowDebt={setShowDebt} setShowPurchase={() => setShowPurchase(true)} setShowExpense={() => setShowExpense(true)} setShowPettyCash={() => setShowPettyCash(true)} onPayDebt={setPayingDebt} onDeleteDebt={deleteDebt} />}
+          {page === 'Finances' && <FinancePage debts={debts} pettyCash={pettyCash} purchases={purchases} expenses={businessExpenses} cashMovements={cashMovements} accountBalances={accountBalances} cashMovementSearch={cashMovementSearch} setCashMovementSearch={setCashMovementSearch} onDeleteMovement={deleteCashMovement} setShowDebt={setShowDebt} setShowPurchase={() => setShowPurchase(true)} setShowExpense={() => setShowExpense(true)} onReceivePettyCash={() => { setPettyCashAction('receive'); setShowPettyCash(true) }} onWithdrawPettyCash={() => { setPettyCashAction('withdraw'); setShowPettyCash(true) }} onPayDebt={setPayingDebt} onDeleteDebt={deleteDebt} />}
           {page === 'Reports' && <Reports products={products} sales={sales} pettyCash={pettyCash} purchases={purchases} expenses={businessExpenses} totals={totals} />}
         </main>
       </div>
@@ -836,6 +837,7 @@ export default function Page() {
 
       {showPettyCash && (
         <PettyCashModal
+          action={pettyCashAction}
           close={() => setShowPettyCash(false)}
           onSave={async (payload) => {
             try {
@@ -988,7 +990,6 @@ function Dashboard({ totals, lowStock, sales, products, setShowSale }: any) {
     { label: 'Output VAT collected', value: money(totals.todayVat || 0), color: 'amber', icon: CircleDollarSign, change: 'Input VAT tracked separately' },
     { label: 'Customers owe', value: money(totals.owed), color: 'amber', icon: Users, change: 'Open customer debts' },
     { label: 'Suppliers owed', value: money(totals.owe), color: 'amber', icon: Wallet, change: 'Open supplier balances' },
-    { label: 'Inventory at cost', value: money(totals.inventory), color: 'teal', icon: Boxes, change: 'Current stock value' },
     { label: 'Cash balance', value: money(totals.cash), color: 'green', icon: Wallet, change: 'From recorded movements' },
     { label: 'Bank balance', value: money(totals.bank), color: 'teal', icon: CircleDollarSign, change: 'From recorded movements' },
     { label: 'Petty cash balance', value: money(totals.pettyCashBalance), color: 'green', icon: Wallet, change: 'Tracked cash movements' },
@@ -1363,7 +1364,7 @@ function DebtPaymentModal({ debt, close, onPay }: { debt: Debt; close: () => voi
   )
 }
 
-function FinancePage({ debts, pettyCash, purchases, expenses, cashMovements, accountBalances, cashMovementSearch, setCashMovementSearch, onDeleteMovement, setShowDebt, setShowPurchase, setShowExpense, setShowPettyCash, onPayDebt, onDeleteDebt }: any) {
+function FinancePage({ debts, pettyCash, purchases, expenses, cashMovements, accountBalances, cashMovementSearch, setCashMovementSearch, onDeleteMovement, setShowDebt, setShowPurchase, setShowExpense, onReceivePettyCash, onWithdrawPettyCash, onPayDebt, onDeleteDebt }: any) {
   const customers = debts.filter((item: Debt) => item.kind === 'customer')
   const suppliers = debts.filter((item: Debt) => item.kind === 'supplier')
   const [customerSearch, setCustomerSearch] = useState('')
@@ -1485,13 +1486,16 @@ function FinancePage({ debts, pettyCash, purchases, expenses, cashMovements, acc
             <span className="petty-cash-mark"><Wallet /></span>
             <div>
               <h2>Petty cash</h2>
-              <p>Shop expenses paid from sales cash</p>
+              <p>Receipts and business or personal withdrawals</p>
             </div>
           </div>
-          <button className="outline-btn" onClick={setShowPettyCash}><Plus /> Withdraw from Petty Cash</button>
+          <div className="petty-cash-actions">
+            <button className="outline-btn" onClick={onWithdrawPettyCash}><Wallet /> Withdraw from Petty Cash</button>
+            <button className="primary-btn compact" onClick={onReceivePettyCash}><Plus /> Add Money to Petty Cash</button>
+          </div>
         </div>
         <div className="petty-cash-summary">
-                <div><span>Petty cash balance</span><strong>{money(pettyCash.reduce((balance: number, entry: PettyCash) => balance + (['owner_contribution', 'customer_payment', 'cash_in', 'other_income'].includes(entry.type) ? entry.amount : -entry.amount), 0))}</strong></div>
+                <div><span>Petty cash balance</span><strong>{money(pettyCash.reduce((balance: number, entry: PettyCash) => balance + (['owner_contribution', 'customer_payment', 'cash_in', 'other_income', 'bank_transfer_in', 'cash_transfer_in'].includes(entry.type) ? entry.amount : -entry.amount), 0))}</strong></div>
           <span className="petty-cash-count">{pettyCash.length} {pettyCash.length === 1 ? 'expense' : 'expenses'}</span>
         </div>
         <BrowseControls count={pettyCash.length} query={pettyCashSearch} onQueryChange={setPettyCashSearch} scrollRef={pettyCashListRef} placeholder="Search expenses..." />
@@ -1499,8 +1503,8 @@ function FinancePage({ debts, pettyCash, purchases, expenses, cashMovements, acc
           {visiblePettyCash.length ? visiblePettyCash.map((entry: PettyCash) => (
             <div className="petty-cash-entry" key={entry.id}>
               <span className="expense-indicator"><Wallet /></span>
-              <span className="expense-description"><strong>{entry.reason}</strong><small>{entry.category || (entry.type === 'expense' ? 'Business expense' : entry.type === 'business_expense_payment' ? 'Business expense payment' : entry.type === 'other_expense' ? 'Other business expense' : entry.type === 'other_income' ? 'Other business income' : entry.type === 'owner_drawing' ? 'Owner drawing' : entry.type === 'owner_contribution' ? 'Owner capital contribution' : entry.type === 'customer_payment' ? 'Customer payment' : entry.type === 'supplier_payment' ? 'Supplier payment' : entry.type === 'inventory_purchase_payment' ? 'Inventory purchase payment' : 'Cash transfer')} · {new Date(`${entry.date}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} · Balance {money(entry.runningBalance ?? 0)} · {entry.user ?? 'unknown'} · Ref {entry.reference || entry.id}</small></span>
-              <strong className={`expense-amount ${['owner_contribution', 'customer_payment', 'cash_in', 'other_income'].includes(entry.type) ? 'cash-in-amount' : ''}`}>{['owner_contribution', 'customer_payment', 'cash_in', 'other_income'].includes(entry.type) ? '+' : '−'}{money(entry.amount)}</strong>
+              <span className="expense-description"><strong>{entry.reason}</strong><small>{entry.category || (entry.type === 'expense' ? 'Business expense' : entry.type === 'business_expense_payment' ? 'Business expense payment' : entry.type === 'other_expense' ? 'Other business expense' : entry.type === 'other_income' ? 'Other business income' : entry.type === 'owner_drawing' ? 'Owner drawing' : entry.type === 'owner_contribution' ? 'Owner capital contribution' : entry.type === 'bank_transfer_in' ? 'Transfer from bank' : entry.type === 'cash_transfer_in' ? 'Transfer from main cash' : entry.type === 'customer_payment' ? 'Customer payment' : entry.type === 'supplier_payment' ? 'Supplier payment' : entry.type === 'inventory_purchase_payment' ? 'Inventory purchase payment' : 'Cash transfer')} · {new Date(`${entry.date}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} · Balance {money(entry.runningBalance ?? 0)} · {entry.user ?? 'unknown'} · Ref {entry.reference || entry.id}</small></span>
+              <strong className={`expense-amount ${['owner_contribution', 'customer_payment', 'cash_in', 'other_income', 'bank_transfer_in', 'cash_transfer_in'].includes(entry.type) ? 'cash-in-amount' : ''}`}>{['owner_contribution', 'customer_payment', 'cash_in', 'other_income', 'bank_transfer_in', 'cash_transfer_in'].includes(entry.type) ? '+' : '−'}{money(entry.amount)}</strong>
             </div>
           )) : pettyCash.length ? <div className="empty-state">No matching expenses.</div> : <div className="petty-cash-empty"><Wallet /><span>No expenses recorded yet</span><small>Your petty cash entries will appear here.</small></div>}
         </div>
@@ -1582,7 +1586,7 @@ function Reports({ sales, products, pettyCash, purchases, expenses, totals }: an
     const otherBusinessIncome = periodPettyCash.filter((entry: PettyCash) => entry.type === 'other_income').reduce((sum: number, entry: PettyCash) => sum + Number(entry.amount || 0), 0)
     const otherBusinessExpenses = periodPettyCash.filter((entry: PettyCash) => entry.type === 'other_expense').reduce((sum: number, entry: PettyCash) => sum + Math.max(0, Number(entry.amount || 0) - Number(entry.vatAmount || 0)), 0)
     const inputVat = periodPettyCash.filter((entry: PettyCash) => ['expense', 'other_expense'].includes(entry.type)).reduce((sum: number, entry: PettyCash) => sum + Number(entry.vatAmount || 0), 0)
-      + periodPurchases.reduce((sum: number, entry: InventoryPurchase) => sum + Number(entry.vatAmount || 0), 0)
+      + periodPurchases.reduce((sum: number, entry: InventoryPurchase) => sum + Number(entry.vatAmount || 0) * Math.min(1, Number(entry.paidAmount || 0) / Math.max(Number(entry.total || 0), 1)), 0)
       + periodExpenses.reduce((sum: number, entry: BusinessExpense) => sum + Number(entry.vatAmount || 0) * Math.min(1, Number(entry.paidAmount || 0) / Math.max(Number(entry.total || 0), 1)), 0)
     const ownerDrawings = pettyCash.filter((entry: PettyCash) => entry.type === 'owner_drawing' && entry.date >= startDate && entry.date <= selectedDate).reduce((sum: number, entry: PettyCash) => sum + Number(entry.amount || 0), 0)
     const ownerContributions = pettyCash.filter((entry: PettyCash) => entry.type === 'owner_contribution' && entry.date >= startDate && entry.date <= selectedDate).reduce((sum: number, entry: PettyCash) => sum + Number(entry.amount || 0), 0)
@@ -1685,7 +1689,6 @@ function Reports({ sales, products, pettyCash, purchases, expenses, totals }: an
           <h3>Financial position (current balances)</h3>
           <div className="document-grid">
             <div><span>Total assets (recorded balances)</span><strong>{money(totals.totalAssets)}</strong></div>
-            <div><span>Inventory at recorded cost</span><strong>{money(products.reduce((sum: number, product: Product) => sum + product.stock * product.buy, 0))}</strong></div>
             <div><span>Customer receivables</span><strong>{money(totals.owed)}</strong></div>
             <div><span>Cash</span><strong>{money(totals.cash)}</strong></div>
             <div><span>Bank</span><strong>{money(totals.bank)}</strong></div>
@@ -2173,34 +2176,51 @@ function BusinessExpenseModal({ close, onSave }: { close: () => void; onSave: (i
   )
 }
 
-function PettyCashModal({ close, onSave }: { close: () => void; onSave: (payload: { amount: number; reason: string; date: string; type: PettyCash['type']; category: string; vatAmount: number; paymentMethod: string }) => Promise<void> }) {
+function PettyCashModal({ action, close, onSave }: { action: 'receive' | 'withdraw'; close: () => void; onSave: (payload: { amount: number; reason: string; date: string; type: PettyCash['type']; category: string; vatAmount: number; paymentMethod: string }) => Promise<void> }) {
   const [amount, setAmount] = useState('')
   const [reason, setReason] = useState('')
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
-  const [type, setType] = useState<'expense' | 'other_expense' | 'other_income' | 'owner_drawing' | 'owner_contribution' | 'transfer' | ''>('')
+  const [type, setType] = useState('')
   const [category, setCategory] = useState('Other operating expense')
   const [vatAmount, setVatAmount] = useState('0')
   const [transferAccount, setTransferAccount] = useState('cash')
+  const receiving = action === 'receive'
 
   const save = async () => {
     if (!amount || !reason.trim() || !type) {
       return
     }
-    await onSave({ amount: Number(amount), reason: reason.trim(), date, type, category: ['expense', 'other_expense'].includes(type) ? category : type === 'owner_drawing' ? 'Personal withdrawal' : type === 'owner_contribution' ? 'Owner capital contribution' : type === 'other_income' ? 'Other business income' : 'Cash transfer', vatAmount: ['expense', 'other_expense'].includes(type) ? Number(vatAmount || 0) : 0, paymentMethod: transferAccount })
+    const normalizedType = type === 'opening_balance' ? 'owner_contribution' : type
+    const movementCategory = type === 'opening_balance'
+      ? 'Opening petty cash balance'
+      : type === 'owner_contribution'
+        ? 'Owner capital contribution'
+        : type === 'bank_transfer_in'
+          ? 'Transfer from bank'
+          : type === 'cash_transfer_in'
+            ? 'Transfer from main cash'
+            : type === 'other_income'
+              ? 'Other business income'
+              : type === 'owner_drawing'
+                ? 'Personal withdrawal'
+                : ['expense', 'other_expense'].includes(type)
+                  ? category
+                  : 'Cash transfer'
+    await onSave({ amount: Number(amount), reason: reason.trim(), date, type: normalizedType as PettyCash['type'], category: movementCategory, vatAmount: ['expense', 'other_expense'].includes(type) ? Number(vatAmount || 0) : 0, paymentMethod: transferAccount })
   }
 
   return (
-    <Modal title="Petty cash movement" close={close}>
+    <Modal title={receiving ? 'Add money to Petty Cash' : 'Withdraw from Petty Cash'} close={close}>
       <div className="form-grid">
-        <label>Transaction type<select required value={type} onChange={(event) => setType(event.target.value as typeof type)}><option value="">Choose transaction type</option><option value="expense">Business operating expense</option><option value="other_expense">Other business expense</option><option value="other_income">Other business income</option><option value="owner_drawing">Personal expense</option><option value="transfer">Cash transfer (not an expense)</option><option value="owner_contribution">Owner capital contribution</option></select></label>
-        {['expense', 'other_expense'].includes(type) && <label>Expense category<select value={category} onChange={(event) => setCategory(event.target.value)}><option>Rent</option><option>Electricity</option><option>Internet</option><option>Transport</option><option>Salaries</option><option>Repairs</option><option>Packaging</option><option>Advertising</option><option>Bank charges</option><option>Cleaning</option><option>Office supplies</option><option>Other operating expense</option></select></label>}
+        <label>{receiving ? 'Source type' : 'Withdrawal type'}<select required value={type} onChange={(event) => setType(event.target.value)}><option value="">{receiving ? 'Choose where the money came from' : 'Choose withdrawal purpose'}</option>{receiving ? <><option value="owner_contribution">Owner capital contribution</option><option value="opening_balance">Opening petty cash balance</option><option value="bank_transfer_in">Transfer from bank</option><option value="cash_transfer_in">Transfer from main cash</option><option value="other_income">Other business income</option></> : <><option value="expense">Business purpose</option><option value="other_expense">Other business expense</option><option value="owner_drawing">Personal expense</option><option value="transfer">Transfer to another account</option></>}</select></label>
+        {!receiving && ['expense', 'other_expense'].includes(type) && <label>Expense category<select value={category} onChange={(event) => setCategory(event.target.value)}><option>Rent</option><option>Electricity</option><option>Internet</option><option>Transport</option><option>Salaries</option><option>Repairs</option><option>Packaging</option><option>Advertising</option><option>Bank charges</option><option>Cleaning</option><option>Office supplies</option><option>Other operating expense</option></select></label>}
         <label>Amount<input type="number" min="1" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="RWF" /></label>
         <label>Date<input type="date" value={date} onChange={(event) => setDate(event.target.value)} /></label>
-        {['expense', 'other_expense'].includes(type) && <label>VAT included in amount<input type="number" min="0" max={amount || undefined} value={vatAmount} onChange={(event) => setVatAmount(event.target.value)} /></label>}
-        {type === 'transfer' && <label>Transfer destination<select value={transferAccount} onChange={(event) => setTransferAccount(event.target.value)}><option value="cash">Cash</option><option value="bank">Bank</option><option value="mobile_money">Mobile Money</option><option value="other">Other</option></select></label>}
-        <label>Explanation / description<input value={reason} onChange={(event) => setReason(event.target.value)} placeholder={type === 'owner_drawing' ? 'Owner personal use' : 'e.g. Bought cleaning materials'} /></label>
+        {!receiving && ['expense', 'other_expense'].includes(type) && <label>VAT included in amount<input type="number" min="0" max={amount || undefined} value={vatAmount} onChange={(event) => setVatAmount(event.target.value)} /></label>}
+        {!receiving && type === 'transfer' && <label>Transfer destination<select value={transferAccount} onChange={(event) => setTransferAccount(event.target.value)}><option value="cash">Main cash</option><option value="bank">Bank</option><option value="mobile_money">Mobile Money</option><option value="other">Other</option></select></label>}
+        <label>{receiving ? 'Source / reason' : 'Purpose / explanation'}<input value={reason} onChange={(event) => setReason(event.target.value)} placeholder={receiving ? 'e.g. Owner added working cash' : type === 'owner_drawing' ? 'Owner personal use' : 'e.g. Bought cleaning materials'} /></label>
       </div>
-      <button className="primary-btn full" disabled={!type || !amount || Number(amount) <= 0 || !reason.trim()} onClick={() => void save()}>{type === 'owner_contribution' ? 'Add capital' : type === 'transfer' ? 'Record transfer' : type === 'other_income' ? 'Record income' : type === 'expense' || type === 'other_expense' ? 'Save business expense' : 'Save withdrawal'} <Wallet /></button>
+      <button className="primary-btn full" disabled={!type || !amount || Number(amount) <= 0 || !reason.trim()} onClick={() => void save()}>{receiving ? 'Add money to petty cash' : type === 'owner_drawing' ? 'Save personal withdrawal' : type === 'transfer' ? 'Record cash transfer' : 'Save business withdrawal'} <Wallet /></button>
     </Modal>
   )
 }

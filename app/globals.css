@@ -136,6 +136,8 @@ body { background:linear-gradient(135deg,#f8f9fa 0%,#eef5f5 100%); }
 .petty-cash-title p { margin:0; color:var(--muted); font-size:11px; }
 .petty-cash-panel > .panel-head { padding-bottom:17px; border-bottom:1px solid #edf1f3; }
 .petty-cash-panel > .panel-head .outline-btn { white-space:nowrap; }
+.petty-cash-actions { display:flex; align-items:center; justify-content:flex-end; flex-wrap:wrap; gap:8px; }
+.petty-cash-actions button { min-height:38px; padding:9px 12px; font-size:11px; }
 .petty-cash-summary { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:16px 2px 13px; }
 .petty-cash-summary > div span,.petty-cash-summary > div strong { display:block; }
 .petty-cash-summary > div span { color:var(--muted); font-size:10px; font-weight:700; text-transform:uppercase; }
@@ -154,7 +156,7 @@ body { background:linear-gradient(135deg,#f8f9fa 0%,#eef5f5 100%); }
 .petty-cash-empty { min-height:160px; }
 .petty-cash-empty > svg { color:#8baeb4; }
 .petty-cash-empty > span { color:var(--foreground); font-size:13px; font-weight:700; }
-@media(max-width:720px){ .category-revenue-heading { grid-template-columns:24px minmax(0,1fr) auto; gap:7px; } .category-revenue-track,.category-revenue-row small { margin-left:31px; } .petty-cash-panel > .panel-head { align-items:flex-start; flex-direction:column; gap:12px; } .petty-cash-panel > .panel-head .outline-btn { align-self:stretch; justify-content:center; } }
+@media(max-width:720px){ .category-revenue-heading { grid-template-columns:24px minmax(0,1fr) auto; gap:7px; } .category-revenue-track,.category-revenue-row small { margin-left:31px; } .petty-cash-panel > .panel-head { align-items:flex-start; flex-direction:column; gap:12px; } .petty-cash-actions { width:100%; } .petty-cash-actions button { flex:1; justify-content:center; } }
 
 .list-browse-controls { display:flex; align-items:center; gap:9px; margin:13px 0 4px; }
 .list-search-box { display:flex; align-items:center; gap:8px; min-width:0; flex:1; height:38px; padding:0 10px; border:1px solid var(--border); border-radius:8px; background:#fff; color:var(--muted); }
