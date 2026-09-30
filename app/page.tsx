@@ -173,6 +173,7 @@ export default function Page() {
   const [receipt, setReceipt] = useState<Sale | null>(null)
   const [editingSale, setEditingSale] = useState<Sale | null>(null)
   const [payingDebt, setPayingDebt] = useState<Debt | null>(null)
+  const [cashMovementSearch, setCashMovementSearch] = useState('')
   const [search, setSearch] = useState('')
   const [includeVat, setIncludeVat] = useState(true)
   const [cart, setCart] = useState<CartItem[]>([])
@@ -566,6 +567,22 @@ export default function Page() {
     setShowExpense(false)
   }
 
+  const deleteCashMovement = async (movement: CashMovement) => {
+    if (!window.confirm(`Delete this ${movement.type.replaceAll('_', ' ')} transaction? Related balances and records will be reversed.`)) return
+    const isSaleReceipt = movement.type === 'sale_receipt'
+      || (movement.type === 'customer_receipt' && movement.id.startsWith('PAY-LEGACY-'))
+    const endpoint = isSaleReceipt
+      ? `/api/sales/${encodeURIComponent(movement.reference)}`
+      : `/api/cash-movements/${encodeURIComponent(movement.id)}`
+    const response = await fetch(endpoint, { method: 'DELETE' })
+    const payload = await response.json()
+    if (!response.ok || !payload.ok) {
+      setLoginError(payload.error ?? 'Unable to delete cash movement.')
+      return
+    }
+    await loadData()
+  }
+
   const handleLogout = () => {
     setLoggedIn(false)
     setProducts([])
@@ -749,7 +766,7 @@ export default function Page() {
           {page === 'Inventory' && (
             <Inventory products={products} setShowProduct={setShowProduct} setEditingProduct={setEditingProduct} deleteProduct={deleteProduct} search={search} setSearch={setSearch} />
           )}
-          {page === 'Finances' && <FinancePage debts={debts} pettyCash={pettyCash} purchases={purchases} expenses={businessExpenses} cashMovements={cashMovements} accountBalances={accountBalances} setShowDebt={setShowDebt} setShowPurchase={() => setShowPurchase(true)} setShowExpense={() => setShowExpense(true)} setShowPettyCash={() => setShowPettyCash(true)} onPayDebt={setPayingDebt} onDeleteDebt={deleteDebt} />}
+          {page === 'Finances' && <FinancePage debts={debts} pettyCash={pettyCash} purchases={purchases} expenses={businessExpenses} cashMovements={cashMovements} accountBalances={accountBalances} cashMovementSearch={cashMovementSearch} setCashMovementSearch={setCashMovementSearch} onDeleteMovement={deleteCashMovement} setShowDebt={setShowDebt} setShowPurchase={() => setShowPurchase(true)} setShowExpense={() => setShowExpense(true)} setShowPettyCash={() => setShowPettyCash(true)} onPayDebt={setPayingDebt} onDeleteDebt={deleteDebt} />}
           {page === 'Reports' && <Reports products={products} sales={sales} pettyCash={pettyCash} purchases={purchases} expenses={businessExpenses} totals={totals} />}
         </main>
       </div>
@@ -1346,7 +1363,7 @@ function DebtPaymentModal({ debt, close, onPay }: { debt: Debt; close: () => voi
   )
 }
 
-function FinancePage({ debts, pettyCash, purchases, expenses, cashMovements, accountBalances, setShowDebt, setShowPurchase, setShowExpense, setShowPettyCash, onPayDebt, onDeleteDebt }: any) {
+function FinancePage({ debts, pettyCash, purchases, expenses, cashMovements, accountBalances, cashMovementSearch, setCashMovementSearch, onDeleteMovement, setShowDebt, setShowPurchase, setShowExpense, setShowPettyCash, onPayDebt, onDeleteDebt }: any) {
   const customers = debts.filter((item: Debt) => item.kind === 'customer')
   const suppliers = debts.filter((item: Debt) => item.kind === 'supplier')
   const [customerSearch, setCustomerSearch] = useState('')
@@ -1358,6 +1375,7 @@ function FinancePage({ debts, pettyCash, purchases, expenses, cashMovements, acc
   const visibleCustomers = customers.filter((entry: Debt) => `${entry.name} ${entry.phone ?? ''} ${entry.description ?? ''}`.toLowerCase().includes(customerSearch.toLowerCase()))
   const visibleSuppliers = suppliers.filter((entry: Debt) => `${entry.name} ${entry.phone ?? ''} ${entry.description ?? ''}`.toLowerCase().includes(supplierSearch.toLowerCase()))
   const visiblePettyCash = pettyCash.filter((entry: PettyCash) => `${entry.reason} ${entry.date} ${entry.amount}`.toLowerCase().includes(pettyCashSearch.toLowerCase()))
+  const visibleCashMovements = cashMovements.filter((entry: CashMovement) => `${entry.type} ${entry.account} ${entry.date} ${entry.reference} ${entry.amount}`.toLowerCase().includes(cashMovementSearch.trim().toLowerCase()))
 
   return (
     <>
@@ -1416,13 +1434,22 @@ function FinancePage({ debts, pettyCash, purchases, expenses, cashMovements, acc
       </div>
 
       <div className="panel account-movements-panel">
-        <div className="panel-head"><div><h2>Cash and bank activity</h2><p>Receipts and payments change balances, not profit by themselves.</p></div><span className="count-badge teal-bg">{cashMovements.length}</span></div>
-        {cashMovements.length ? <div className="account-movement-list">
-          {cashMovements.slice(0, 12).map((movement: CashMovement) => <div className="account-movement-row" key={movement.id}>
-            <span><strong>{movement.type.replaceAll('_', ' ')}</strong><small>{movement.date} · {movement.account.replaceAll('_', ' ')} · {movement.reference}</small></span>
-            <strong className={movement.amount >= 0 ? 'green-text' : 'negative'}>{movement.amount >= 0 ? '+' : '−'}{money(Math.abs(movement.amount))}</strong>
-          </div>)}
-        </div> : <div className="empty-state">No cash or bank movements recorded yet.</div>}
+        <div className="account-movements-header">
+          <div className="account-movements-title">
+            <span className="account-movements-mark"><CircleDollarSign /></span>
+            <div><span className="eyebrow">ACCOUNT LEDGER</span><h2>Cash and bank activity</h2><p>Each movement changes an account balance, not profit by itself.</p></div>
+          </div>
+          <span className="count-badge teal-bg">{visibleCashMovements.length} / {cashMovements.length}</span>
+        </div>
+        <label className="account-movement-search"><Search /><input aria-label="Search cash and bank activity" placeholder="Search type, account, date or reference..." value={cashMovementSearch} onChange={(event) => setCashMovementSearch(event.target.value)} />{cashMovementSearch && <button type="button" aria-label="Clear activity search" onClick={() => setCashMovementSearch('')}><X /></button>}</label>
+        {visibleCashMovements.length ? <div className={`account-movement-list${visibleCashMovements.length > 3 ? ' is-scrollable' : ''}`}>
+          {visibleCashMovements.map((movement: CashMovement) => <article className="account-movement-row" key={movement.id}>
+            <span className={`movement-indicator ${movement.amount >= 0 ? 'is-inflow' : 'is-outflow'}`}>{movement.amount >= 0 ? '+' : '−'}</span>
+            <span className="movement-details"><strong>{movement.type.replaceAll('_', ' ')}</strong><small>{movement.date} · {movement.account.replaceAll('_', ' ')} · Ref {movement.reference || movement.id}</small></span>
+            <strong className={`movement-amount ${movement.amount >= 0 ? 'green-text' : 'negative'}`}>{movement.amount >= 0 ? '+' : '−'}{money(Math.abs(movement.amount))}</strong>
+            <button className="movement-delete" type="button" aria-label={`Delete ${movement.type.replaceAll('_', ' ')} ${movement.reference || movement.id}`} title="Delete transaction and reverse balances" onClick={() => void onDeleteMovement(movement)}><Trash2 /></button>
+          </article>)}
+        </div> : <div className="empty-state">{cashMovements.length ? 'No matching transactions.' : 'No cash or bank movements recorded yet.'}</div>}
       </div>
 
       <div className="panel business-expense-history">
