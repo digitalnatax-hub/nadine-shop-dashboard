@@ -2072,7 +2072,7 @@ function Reports({ sales, products, pettyCash, cashMovements, purchases, expense
             <div className="balance-check-heading">
               <span className="balance-check-icon"><AlertTriangle /></span>
               <div><h4>Balance check</h4><p>Accounting equation review</p></div>
-              <span className="balance-check-status">Complete</span>
+              <span className={`balance-check-status ${totals.balanceDifference === 0 ? 'is-balanced' : 'is-incomplete'}`}>{totals.balanceDifference === 0 ? 'Balanced' : 'Incomplete'}</span>
             </div>
             <div className="balance-check-values">
               <div><span>Total assets</span><strong>{money(totals.totalAssets)}</strong></div>
