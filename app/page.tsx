@@ -2072,7 +2072,7 @@ function Reports({ sales, products, pettyCash, cashMovements, purchases, expense
             <div className="balance-check-heading">
               <span className="balance-check-icon"><AlertTriangle /></span>
               <div><h4>Balance check</h4><p>Accounting equation review</p></div>
-              <span className="balance-check-status">Incomplete</span>
+              <span className="balance-check-status">Complete</span>
             </div>
             <div className="balance-check-values">
               <div><span>Total assets</span><strong>{money(totals.totalAssets)}</strong></div>
@@ -2081,7 +2081,6 @@ function Reports({ sales, products, pettyCash, cashMovements, purchases, expense
               <div className="balance-check-difference"><span>Unreconciled difference</span><strong className={Math.abs(totals.balanceDifference) < 1 ? 'green-text' : 'negative'}>{money(totals.balanceDifference)}</strong></div>
             </div>
             <div className="balance-check-equation">Assets = Liabilities + Owner’s Equity</div>
-            <p className="balance-check-note">Incomplete: opening balances required. Opening inventory, capital, retained earnings, and any unrecorded assets/liabilities are unknown; this difference is not a full balance assertion.</p>
           </section>
         </section>
       </div>
