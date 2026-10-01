@@ -1586,11 +1586,10 @@ function FinancePage({ debts, pettyCash, purchases, expenses, accountBalances, o
 
   return (
     <>
-      <Header title="Finances" subtitle="Keep track of money owed to you, payments you need to make, and cash withdrawn for shop expenses." />
+      <Header title="Finances" subtitle="Keep track of money owed to you, payments you need to make, and cash withdrawn for shop expenses." action="Add owner's capital" onAction={onAddOwnerCapital} />
       <div className="finance-actions">
         <button className="outline-btn" onClick={() => setShowDebt(true)}><Plus /> Add debt</button>
         <button className="outline-btn" onClick={() => setShowExpense(true)}><Plus /> Record expense</button>
-        <button className="outline-btn" onClick={onAddOwnerCapital}><Plus /> Add owner&apos;s capital</button>
         <button className="outline-btn" onClick={onRecordDrawing}><Users /> Add drawing</button>
         <button className="primary-btn compact" onClick={() => setShowPurchase(true)}><Package /> Receive inventory</button>
       </div>
