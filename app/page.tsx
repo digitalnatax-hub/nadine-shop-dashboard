@@ -133,6 +133,11 @@ type CartItem = {
 }
 
 const money = (value: number) => `${Math.round(value).toLocaleString('en-US')} RWF`
+const getLocalDateInputValue = () => {
+  const date = new Date()
+  const offset = date.getTimezoneOffset() * 60_000
+  return new Date(date.getTime() - offset).toISOString().slice(0, 10)
+}
 
 const getQuantityStep = (unit: string) => {
   const normalized = unit.toLowerCase()
@@ -170,6 +175,7 @@ export default function Page() {
   const [purchases, setPurchases] = useState<InventoryPurchase[]>([])
   const [debtPayments, setDebtPayments] = useState<DebtPayment[]>([])
   const [accountBalances, setAccountBalances] = useState({ cash: 0, bank: 0, mobile_money: 0, other: 0 })
+  const [cashMovements, setCashMovements] = useState<{ id: string; date: string; account: string; type: string; amount: number; reference: string }[]>([])
   const [businessExpenses, setBusinessExpenses] = useState<BusinessExpense[]>([])
   const [showProduct, setShowProduct] = useState(false)
   const [editingProduct, setEditingProduct] = useState<Product | null>(null)
@@ -179,6 +185,7 @@ export default function Page() {
   const [pettyCashAction, setPettyCashAction] = useState<'receive' | 'withdraw' | 'drawing'>('withdraw')
   const [showPurchase, setShowPurchase] = useState(false)
   const [showExpense, setShowExpense] = useState(false)
+  const [showOwnerCapital, setShowOwnerCapital] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [receipt, setReceipt] = useState<Sale | null>(null)
   const [editingSale, setEditingSale] = useState<Sale | null>(null)
@@ -222,6 +229,7 @@ export default function Page() {
     setPurchases(payload.purchases ?? [])
     setDebtPayments(payload.debtPayments ?? [])
     setAccountBalances(payload.accountBalances ?? { cash: 0, bank: 0, mobile_money: 0, other: 0 })
+    setCashMovements(payload.cashMovements ?? [])
     setBusinessExpenses(payload.expenses ?? [])
   }
 
@@ -260,7 +268,9 @@ export default function Page() {
     const totalInventory = products.reduce((sum, product) => sum + Number(product.stock) * Number(product.buy), 0)
     const knownAssets = accountBalances.cash + accountBalances.bank + accountBalances.mobile_money + accountBalances.other + pettyCashBalance + totalReceivables + totalInventory + Math.max(0, totalInputVat - totalOutputVat)
     const knownLiabilities = totalPayables + Math.max(0, totalOutputVat - totalInputVat)
-    const knownEquity = pettyCash.filter((entry) => entry.type === 'owner_contribution').reduce((sum, entry) => sum + Number(entry.amount), 0) + totalNetProfit - pettyCash.filter((entry) => entry.type === 'owner_drawing').reduce((sum, entry) => sum + Number(entry.amount), 0)
+    const ownerCapitalContributions = cashMovements.filter((movement) => movement.type === 'owner_capital').reduce((sum, movement) => sum + Number(movement.amount), 0)
+    const ownerContributions = pettyCash.filter((entry) => entry.type === 'owner_contribution').reduce((sum, entry) => sum + Number(entry.amount), 0) + ownerCapitalContributions
+    const knownEquity = ownerContributions + totalNetProfit - pettyCash.filter((entry) => entry.type === 'owner_drawing').reduce((sum, entry) => sum + Number(entry.amount), 0)
 
     return {
       sales: totalRevenue,
@@ -275,7 +285,7 @@ export default function Page() {
       inventory: products.reduce((sum, product) => sum + Number(product.stock) * Number(product.buy), 0),
       pettyCashBalance,
       ownerDrawings: pettyCash.filter((entry) => entry.type === 'owner_drawing').reduce((sum, entry) => sum + Number(entry.amount), 0),
-      ownerContributions: pettyCash.filter((entry) => entry.type === 'owner_contribution').reduce((sum, entry) => sum + Number(entry.amount), 0),
+      ownerContributions,
       cash: accountBalances.cash,
       bank: accountBalances.bank,
       mobileMoney: accountBalances.mobile_money,
@@ -289,7 +299,7 @@ export default function Page() {
       knownEquity,
       balanceDifference: knownAssets - knownLiabilities - knownEquity,
     }
-  }, [sales, debts, pettyCash, products, purchases, accountBalances, businessExpenses])
+  }, [sales, debts, pettyCash, products, purchases, accountBalances, businessExpenses, cashMovements])
 
   const lowStock = products.filter((product) => product.stock <= product.min)
 
@@ -603,6 +613,18 @@ export default function Page() {
     await loadData()
   }
 
+  const createOwnerCapital = async (input: { amount: number; date: string }) => {
+    const response = await fetch('/api/owner-capital', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...input, user: username }),
+    })
+    const payload = await response.json()
+    if (!response.ok || !payload.ok) throw new Error(payload.error ?? 'Unable to add owner capital.')
+    await loadData()
+    setShowOwnerCapital(false)
+  }
+
   const updatePettyCash = async (entry: PettyCash, input: { amount: number; reason: string; date: string; category: string; vatAmount: number }) => {
     const response = await fetch(`/api/petty-cash/${encodeURIComponent(entry.id)}`, {
       method: 'PATCH',
@@ -705,6 +727,7 @@ export default function Page() {
     setPurchases([])
     setDebtPayments([])
     setAccountBalances({ cash: 0, bank: 0, mobile_money: 0, other: 0 })
+    setCashMovements([])
     setBusinessExpenses([])
     setPage('Dashboard')
   }
@@ -879,8 +902,8 @@ export default function Page() {
           {page === 'Inventory' && (
             <Inventory products={products} setShowProduct={setShowProduct} setEditingProduct={setEditingProduct} deleteProduct={deleteProduct} search={search} setSearch={setSearch} />
           )}
-          {page === 'Finances' && <FinancePage debts={debts} pettyCash={pettyCash} purchases={purchases} expenses={businessExpenses} accountBalances={accountBalances} onEditPettyCash={setEditingPettyCash} onDeletePettyCash={deletePettyCash} onEditPurchase={setEditingPurchase} onDeletePurchase={deleteInventoryPurchase} onEditExpense={setEditingExpense} onDeleteExpense={deleteBusinessExpense} setShowDebt={setShowDebt} setShowPurchase={() => setShowPurchase(true)} setShowExpense={() => setShowExpense(true)} onReceivePettyCash={() => { setPettyCashAction('receive'); setShowPettyCash(true) }} onWithdrawPettyCash={() => { setPettyCashAction('withdraw'); setShowPettyCash(true) }} onRecordDrawing={() => { setPettyCashAction('drawing'); setShowPettyCash(true) }} onPayDebt={setPayingDebt} onEditDebt={setEditingDebt} onDeleteDebt={deleteDebt} />}
-          {page === 'Reports' && <Reports products={products} sales={sales} pettyCash={pettyCash} purchases={purchases} expenses={businessExpenses} totals={totals} />}
+          {page === 'Finances' && <FinancePage debts={debts} pettyCash={pettyCash} purchases={purchases} expenses={businessExpenses} accountBalances={accountBalances} onEditPettyCash={setEditingPettyCash} onDeletePettyCash={deletePettyCash} onEditPurchase={setEditingPurchase} onDeletePurchase={deleteInventoryPurchase} onEditExpense={setEditingExpense} onDeleteExpense={deleteBusinessExpense} setShowDebt={setShowDebt} setShowPurchase={() => setShowPurchase(true)} setShowExpense={() => setShowExpense(true)} onAddOwnerCapital={() => setShowOwnerCapital(true)} onReceivePettyCash={() => { setPettyCashAction('receive'); setShowPettyCash(true) }} onWithdrawPettyCash={() => { setPettyCashAction('withdraw'); setShowPettyCash(true) }} onRecordDrawing={() => { setPettyCashAction('drawing'); setShowPettyCash(true) }} onPayDebt={setPayingDebt} onEditDebt={setEditingDebt} onDeleteDebt={deleteDebt} />}
+          {page === 'Reports' && <Reports products={products} sales={sales} pettyCash={pettyCash} cashMovements={cashMovements} purchases={purchases} expenses={businessExpenses} totals={totals} />}
         </main>
       </div>
 
@@ -975,6 +998,8 @@ export default function Page() {
           }}
         />
       )}
+
+      {showOwnerCapital && <OwnerCapitalModal close={() => setShowOwnerCapital(false)} onSave={createOwnerCapital} />}
 
       {showPurchase && (
         <InventoryPurchaseModal
@@ -1531,7 +1556,7 @@ function DebtPaymentEditModal({ payment, close, onSave }: { payment: DebtPayment
   )
 }
 
-function FinancePage({ debts, pettyCash, purchases, expenses, accountBalances, onEditPettyCash, onDeletePettyCash, onEditPurchase, onDeletePurchase, onEditExpense, onDeleteExpense, setShowDebt, setShowPurchase, setShowExpense, onReceivePettyCash, onWithdrawPettyCash, onRecordDrawing, onPayDebt, onEditDebt, onDeleteDebt }: any) {
+function FinancePage({ debts, pettyCash, purchases, expenses, accountBalances, onEditPettyCash, onDeletePettyCash, onEditPurchase, onDeletePurchase, onEditExpense, onDeleteExpense, setShowDebt, setShowPurchase, setShowExpense, onAddOwnerCapital, onReceivePettyCash, onWithdrawPettyCash, onRecordDrawing, onPayDebt, onEditDebt, onDeleteDebt }: any) {
   const customers = debts.filter((item: Debt) => item.kind === 'customer')
   const suppliers = debts.filter((item: Debt) => item.kind === 'supplier')
   const [customerSearch, setCustomerSearch] = useState('')
@@ -1565,6 +1590,7 @@ function FinancePage({ debts, pettyCash, purchases, expenses, accountBalances, o
       <div className="finance-actions">
         <button className="outline-btn" onClick={() => setShowDebt(true)}><Plus /> Add debt</button>
         <button className="outline-btn" onClick={() => setShowExpense(true)}><Plus /> Record expense</button>
+        <button className="outline-btn" onClick={onAddOwnerCapital}><Plus /> Add owner&apos;s capital</button>
         <button className="outline-btn" onClick={onRecordDrawing}><Users /> Add drawing</button>
         <button className="primary-btn compact" onClick={() => setShowPurchase(true)}><Package /> Receive inventory</button>
       </div>
@@ -1771,7 +1797,7 @@ function DebtRow({ entry, onPayDebt, onEditDebt, onDeleteDebt }: { entry: Debt; 
   )
 }
 
-function Reports({ sales, products, pettyCash, purchases, expenses, totals }: any) {
+function Reports({ sales, products, pettyCash, cashMovements, purchases, expenses, totals }: any) {
   const [range, setRange] = useState<'day' | 'week' | 'month'>('day')
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0, 10))
   const [productSearch, setProductSearch] = useState('')
@@ -1798,13 +1824,14 @@ function Reports({ sales, products, pettyCash, purchases, expenses, totals }: an
       + periodExpenses.reduce((sum: number, entry: BusinessExpense) => sum + Number(entry.vatAmount || 0) * Math.min(1, Number(entry.paidAmount || 0) / Math.max(Number(entry.total || 0), 1)), 0)
     const ownerDrawings = pettyCash.filter((entry: PettyCash) => entry.type === 'owner_drawing' && entry.date >= startDate && entry.date <= selectedDate).reduce((sum: number, entry: PettyCash) => sum + Number(entry.amount || 0), 0)
     const ownerContributions = pettyCash.filter((entry: PettyCash) => entry.type === 'owner_contribution' && entry.date >= startDate && entry.date <= selectedDate).reduce((sum: number, entry: PettyCash) => sum + Number(entry.amount || 0), 0)
+      + cashMovements.filter((movement: { type: string; date: string; amount: number }) => movement.type === 'owner_capital' && movement.date >= startDate && movement.date <= selectedDate).reduce((sum: number, movement: { amount: number }) => sum + Number(movement.amount || 0), 0)
     const grossProfit = revenue - cost
     const operatingProfit = grossProfit - operatingExpenses
     const netProfit = operatingProfit + otherBusinessIncome - otherBusinessExpenses
     const netVat = vat - inputVat
     const vatConfigured = vat > 0 || inputVat > 0 || periodExpenses.some((entry: BusinessExpense) => entry.vatAmount > 0) || periodPurchases.some((entry: InventoryPurchase) => entry.vatAmount > 0)
     return { entries, revenue, vat, inputVat, netVat, vatConfigured, operatingExpenses, otherBusinessIncome, otherBusinessExpenses, ownerDrawings, ownerContributions, grossProfit, operatingProfit, netProfit, cost, loss: Math.max(0, -netProfit), startDate }
-  }, [range, selectedDate, sales, pettyCash, purchases, expenses])
+  }, [range, selectedDate, sales, pettyCash, cashMovements, purchases, expenses])
 
   const productPerformance = useMemo(() => {
     const items = report.entries.flatMap((entry: Sale) => entry.items)
@@ -2470,6 +2497,36 @@ function PettyCashModal({ action, close, onSave }: { action: 'receive' | 'withdr
         <label>{receiving ? 'Source / reason' : action === 'drawing' ? 'Reason for withdrawal' : 'Purpose / explanation'}<input value={reason} onChange={(event) => setReason(event.target.value)} placeholder={receiving ? 'e.g. Owner added working cash' : type === 'owner_drawing' ? 'e.g. Personal use' : 'e.g. Bought cleaning materials'} /></label>
       </div>
       <button className="primary-btn full" disabled={!type || !amount || Number(amount) <= 0 || !reason.trim()} onClick={() => void save()}>{receiving ? 'Add money to petty cash' : type === 'owner_drawing' ? 'Save personal withdrawal' : type === 'transfer' ? 'Record cash transfer' : 'Save business withdrawal'} <Wallet /></button>
+    </Modal>
+  )
+}
+
+function OwnerCapitalModal({ close, onSave }: { close: () => void; onSave: (input: { amount: number; date: string }) => Promise<void> }) {
+  const [amount, setAmount] = useState('')
+  const [date, setDate] = useState(getLocalDateInputValue())
+  const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const save = async () => {
+    setSaving(true)
+    setError('')
+    try {
+      await onSave({ amount: Number(amount), date })
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Unable to add owner capital.')
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Modal title="Add owner&apos;s capital" close={close}>
+      <div className="form-grid">
+        <label>Date added<input type="date" value={date} onChange={(event) => setDate(event.target.value)} required /></label>
+        <label>Amount<input type="number" min="0.01" step="any" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="RWF" required /></label>
+      </div>
+      <small>Recorded as opening cash from 12:00 AM on the selected date.</small>
+      {error ? <div className="error-text">{error}</div> : null}
+      <button className="primary-btn full" disabled={saving || !date || !amount || !Number.isFinite(Number(amount)) || Number(amount) <= 0} onClick={() => void save()}>{saving ? 'Saving…' : 'Add owner capital'} <Wallet /></button>
     </Modal>
   )
 }
