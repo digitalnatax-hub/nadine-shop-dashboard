@@ -182,6 +182,7 @@ export async function GET() {
         type: movement.type,
         amount: Number(movement.amount ?? 0),
         reference: movement.reference ?? '',
+        user: movement.user ?? 'unknown',
       })),
     })
   } catch (error) {

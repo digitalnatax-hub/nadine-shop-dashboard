@@ -175,7 +175,7 @@ export default function Page() {
   const [purchases, setPurchases] = useState<InventoryPurchase[]>([])
   const [debtPayments, setDebtPayments] = useState<DebtPayment[]>([])
   const [accountBalances, setAccountBalances] = useState({ cash: 0, bank: 0, mobile_money: 0, other: 0 })
-  const [cashMovements, setCashMovements] = useState<{ id: string; date: string; account: string; type: string; amount: number; reference: string }[]>([])
+  const [cashMovements, setCashMovements] = useState<{ id: string; date: string; account: string; type: string; amount: number; reference: string; user?: string }[]>([])
   const [businessExpenses, setBusinessExpenses] = useState<BusinessExpense[]>([])
   const [showProduct, setShowProduct] = useState(false)
   const [editingProduct, setEditingProduct] = useState<Product | null>(null)
@@ -286,6 +286,7 @@ export default function Page() {
       pettyCashBalance,
       ownerDrawings: pettyCash.filter((entry) => entry.type === 'owner_drawing').reduce((sum, entry) => sum + Number(entry.amount), 0),
       ownerContributions,
+      ownerCapitalCount: pettyCash.filter((entry) => entry.type === 'owner_contribution').length + cashMovements.filter((movement) => movement.type === 'owner_capital').length,
       cash: accountBalances.cash,
       bank: accountBalances.bank,
       mobileMoney: accountBalances.mobile_money,
@@ -902,7 +903,7 @@ export default function Page() {
           {page === 'Inventory' && (
             <Inventory products={products} setShowProduct={setShowProduct} setEditingProduct={setEditingProduct} deleteProduct={deleteProduct} search={search} setSearch={setSearch} />
           )}
-          {page === 'Finances' && <FinancePage debts={debts} pettyCash={pettyCash} purchases={purchases} expenses={businessExpenses} accountBalances={accountBalances} onEditPettyCash={setEditingPettyCash} onDeletePettyCash={deletePettyCash} onEditPurchase={setEditingPurchase} onDeletePurchase={deleteInventoryPurchase} onEditExpense={setEditingExpense} onDeleteExpense={deleteBusinessExpense} setShowDebt={setShowDebt} setShowPurchase={() => setShowPurchase(true)} setShowExpense={() => setShowExpense(true)} onAddOwnerCapital={() => setShowOwnerCapital(true)} onReceivePettyCash={() => { setPettyCashAction('receive'); setShowPettyCash(true) }} onWithdrawPettyCash={() => { setPettyCashAction('withdraw'); setShowPettyCash(true) }} onRecordDrawing={() => { setPettyCashAction('drawing'); setShowPettyCash(true) }} onPayDebt={setPayingDebt} onEditDebt={setEditingDebt} onDeleteDebt={deleteDebt} />}
+          {page === 'Finances' && <FinancePage debts={debts} pettyCash={pettyCash} cashMovements={cashMovements} ownerContributions={totals.ownerContributions} purchases={purchases} expenses={businessExpenses} accountBalances={accountBalances} onEditPettyCash={setEditingPettyCash} onDeletePettyCash={deletePettyCash} onEditPurchase={setEditingPurchase} onDeletePurchase={deleteInventoryPurchase} onEditExpense={setEditingExpense} onDeleteExpense={deleteBusinessExpense} setShowDebt={setShowDebt} setShowPurchase={() => setShowPurchase(true)} setShowExpense={() => setShowExpense(true)} onAddOwnerCapital={() => setShowOwnerCapital(true)} onReceivePettyCash={() => { setPettyCashAction('receive'); setShowPettyCash(true) }} onWithdrawPettyCash={() => { setPettyCashAction('withdraw'); setShowPettyCash(true) }} onRecordDrawing={() => { setPettyCashAction('drawing'); setShowPettyCash(true) }} onPayDebt={setPayingDebt} onEditDebt={setEditingDebt} onDeleteDebt={deleteDebt} />}
           {page === 'Reports' && <Reports products={products} sales={sales} pettyCash={pettyCash} cashMovements={cashMovements} purchases={purchases} expenses={businessExpenses} totals={totals} />}
         </main>
       </div>
@@ -1149,6 +1150,7 @@ function Dashboard({ totals, lowStock, sales, products, setShowSale }: any) {
     { label: 'Cash balance', value: money(totals.cash), color: 'green', icon: Wallet, change: 'From recorded movements' },
     { label: 'Bank balance', value: money(totals.bank), color: 'teal', icon: CircleDollarSign, change: 'From recorded movements' },
     { label: 'Petty cash balance', value: money(totals.pettyCashBalance), color: 'green', icon: Wallet, change: 'Tracked cash movements' },
+    { label: "Owner's capital", value: money(totals.ownerContributions), color: 'teal', icon: CircleDollarSign, change: `${totals.ownerCapitalCount} contribution${totals.ownerCapitalCount === 1 ? '' : 's'} recorded` },
     { label: 'Owner drawings', value: money(totals.ownerDrawings), color: 'amber', icon: Users, change: 'Excluded from net profit' },
     { label: 'Low stock items', value: lowStock.length, color: 'red', icon: AlertTriangle, change: 'Needs attention' },
   ]
@@ -1556,7 +1558,7 @@ function DebtPaymentEditModal({ payment, close, onSave }: { payment: DebtPayment
   )
 }
 
-function FinancePage({ debts, pettyCash, purchases, expenses, accountBalances, onEditPettyCash, onDeletePettyCash, onEditPurchase, onDeletePurchase, onEditExpense, onDeleteExpense, setShowDebt, setShowPurchase, setShowExpense, onAddOwnerCapital, onReceivePettyCash, onWithdrawPettyCash, onRecordDrawing, onPayDebt, onEditDebt, onDeleteDebt }: any) {
+function FinancePage({ debts, pettyCash, cashMovements, ownerContributions, purchases, expenses, accountBalances, onEditPettyCash, onDeletePettyCash, onEditPurchase, onDeletePurchase, onEditExpense, onDeleteExpense, setShowDebt, setShowPurchase, setShowExpense, onAddOwnerCapital, onReceivePettyCash, onWithdrawPettyCash, onRecordDrawing, onPayDebt, onEditDebt, onDeleteDebt }: any) {
   const customers = debts.filter((item: Debt) => item.kind === 'customer')
   const suppliers = debts.filter((item: Debt) => item.kind === 'supplier')
   const [customerSearch, setCustomerSearch] = useState('')
@@ -1565,12 +1567,14 @@ function FinancePage({ debts, pettyCash, purchases, expenses, accountBalances, o
   const [drawingSearch, setDrawingSearch] = useState('')
   const [expenseSearch, setExpenseSearch] = useState('')
   const [purchaseSearch, setPurchaseSearch] = useState('')
+  const [ownerCapitalSearch, setOwnerCapitalSearch] = useState('')
   const customerListRef = useRef<HTMLDivElement>(null)
   const supplierListRef = useRef<HTMLDivElement>(null)
   const pettyCashListRef = useRef<HTMLDivElement>(null)
   const drawingListRef = useRef<HTMLDivElement>(null)
   const expenseListRef = useRef<HTMLDivElement>(null)
   const purchaseListRef = useRef<HTMLDivElement>(null)
+  const ownerCapitalListRef = useRef<HTMLDivElement>(null)
   const visibleCustomers = customers.filter((entry: Debt) => `${entry.name} ${entry.phone ?? ''} ${entry.description ?? ''}`.toLowerCase().includes(customerSearch.toLowerCase()))
   const visibleSuppliers = suppliers.filter((entry: Debt) => `${entry.name} ${entry.phone ?? ''} ${entry.description ?? ''}`.toLowerCase().includes(supplierSearch.toLowerCase()))
   const ownerDrawings = pettyCash.filter((entry: PettyCash) => entry.type === 'owner_drawing')
@@ -1579,6 +1583,27 @@ function FinancePage({ debts, pettyCash, purchases, expenses, accountBalances, o
   const visibleDrawings = ownerDrawings.filter((entry: PettyCash) => `${entry.reason} ${entry.category ?? ''} ${entry.date} ${entry.amount}`.toLowerCase().includes(drawingSearch.trim().toLowerCase()))
   const visibleExpenses = expenses.filter((entry: BusinessExpense) => `${entry.category} ${entry.description} ${entry.supplier} ${entry.date} ${entry.paymentStatus}`.toLowerCase().includes(expenseSearch.trim().toLowerCase()))
   const visiblePurchases = purchases.filter((entry: InventoryPurchase) => `${entry.supplier} ${entry.id} ${entry.date} ${entry.items.map((item) => item.name).join(' ')} ${entry.paymentMethod}`.toLowerCase().includes(purchaseSearch.trim().toLowerCase()))
+  const ownerCapitalEntries = [
+    ...cashMovements.filter((movement: { type: string }) => movement.type === 'owner_capital').map((movement: { id: string; date: string; amount: number; reference?: string; user?: string }) => ({
+      id: `cash-${movement.id}`,
+      date: movement.date,
+      amount: Number(movement.amount),
+      source: 'Main cash',
+      reference: movement.reference ?? "Owner's capital",
+      user: movement.user ?? 'unknown',
+    })),
+    ...pettyCash.filter((entry: PettyCash) => entry.type === 'owner_contribution').map((entry: PettyCash) => ({
+      id: `petty-${entry.id}`,
+      date: entry.date,
+      amount: Number(entry.amount),
+      source: 'Petty cash',
+      reference: entry.reason,
+      user: entry.user ?? 'unknown',
+    })),
+  ].sort((left, right) => right.date.localeCompare(left.date) || right.id.localeCompare(left.id))
+  const visibleOwnerCapitalEntries = ownerCapitalEntries.filter((entry) =>
+    `${entry.date} ${entry.amount} ${entry.source} ${entry.reference} ${entry.user}`.toLowerCase().includes(ownerCapitalSearch.trim().toLowerCase()),
+  )
   const pettyCashInflows = pettyCash.filter((entry: PettyCash) => ['owner_contribution', 'customer_payment', 'cash_in', 'other_income', 'bank_transfer_in', 'cash_transfer_in'].includes(entry.type)).reduce((sum: number, entry: PettyCash) => sum + Number(entry.amount), 0)
   const pettyCashOutflows = pettyCashEntries.filter((entry: PettyCash) => !['owner_contribution', 'customer_payment', 'cash_in', 'other_income', 'bank_transfer_in', 'cash_transfer_in'].includes(entry.type)).reduce((sum: number, entry: PettyCash) => sum + Number(entry.amount), 0)
   const ownerDrawingTotal = ownerDrawings.reduce((sum: number, entry: PettyCash) => sum + Number(entry.amount), 0)
@@ -1605,6 +1630,34 @@ function FinancePage({ debts, pettyCash, purchases, expenses, accountBalances, o
           <small>To {suppliers.length} suppliers</small>
         </div>
         <div><span>Cash / bank</span><strong>{money(accountBalances.cash + accountBalances.bank)}</strong><small>Excludes petty cash and mobile money</small></div>
+        <div><span>Owner&apos;s capital</span><strong>{money(ownerContributions)}</strong><small>{ownerCapitalEntries.length} contribution{ownerCapitalEntries.length === 1 ? '' : 's'} recorded</small></div>
+      </div>
+
+      <div className="panel owner-capital-panel">
+        <div className="panel-head">
+          <div className="petty-cash-title">
+            <span className="owner-capital-mark"><CircleDollarSign /></span>
+            <div><h2>Owner&apos;s capital</h2><p>Capital contributions recorded for the business</p></div>
+          </div>
+          <span className="petty-cash-count">{ownerCapitalEntries.length} {ownerCapitalEntries.length === 1 ? 'contribution' : 'contributions'}</span>
+        </div>
+        <div className="petty-cash-summary owner-capital-total">
+          <div><span>Total contributed</span><strong>{money(ownerContributions)}</strong></div>
+          <small>Each entry is effective from 12:00 AM on its recorded date.</small>
+        </div>
+        <BrowseControls count={ownerCapitalEntries.length} query={ownerCapitalSearch} onQueryChange={setOwnerCapitalSearch} scrollRef={ownerCapitalListRef} placeholder="Search owner capital..." alwaysVisible />
+        <div className={`owner-capital-list ${ownerCapitalEntries.length > 3 ? 'side-scroll-list' : ''}`} ref={ownerCapitalListRef}>
+          {visibleOwnerCapitalEntries.length ? visibleOwnerCapitalEntries.map((entry) => (
+            <div className="owner-capital-row" key={entry.id}>
+              <span className="owner-capital-entry-icon"><CircleDollarSign /></span>
+              <span className="expense-description">
+                <strong>{money(entry.amount)} added</strong>
+                <small>{new Date(`${entry.date}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} · {entry.source} · {entry.user} · {entry.reference}</small>
+              </span>
+              <span className="owner-capital-entry-date">{entry.date}</span>
+            </div>
+          )) : <div className="owner-capital-empty">{ownerCapitalEntries.length ? 'No matching capital contributions.' : 'No owner capital recorded yet.'}</div>}
+        </div>
       </div>
 
       <div className="debt-columns">
