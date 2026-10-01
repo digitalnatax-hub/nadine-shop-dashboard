@@ -1849,10 +1849,37 @@ function DebtRow({ entry, onPayDebt, onEditDebt, onDeleteDebt }: { entry: Debt; 
   )
 }
 
+type BalanceSheetRow = {
+  label: string
+  value: string
+  deduction?: boolean
+}
+
+function BalanceSheetGroup({ title, rows, totalLabel, totalValue }: { title: string; rows: BalanceSheetRow[]; totalLabel: string; totalValue: string }) {
+  return (
+    <section className="balance-sheet-group">
+      <h5>{title}</h5>
+      <div className="balance-sheet-rows">
+        {rows.map((row) => (
+          <div className={`balance-sheet-row${row.deduction ? ' is-deduction' : ''}`} key={row.label}>
+            <span>{row.label}</span><strong>{row.value}</strong>
+          </div>
+        ))}
+      </div>
+      <div className="balance-sheet-subtotal"><span>{totalLabel}</span><strong>{totalValue}</strong></div>
+    </section>
+  )
+}
+
+function BalanceSheetGrandTotal({ label, value }: { label: string; value: string }) {
+  return <div className="balance-sheet-grand-total"><span>{label}</span><strong>{value}</strong></div>
+}
+
 function Reports({ sales, products, pettyCash, cashMovements, purchases, expenses, totals }: any) {
   const [range, setRange] = useState<'day' | 'week' | 'month'>('day')
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0, 10))
   const [productSearch, setProductSearch] = useState('')
+  const [balanceSheetView, setBalanceSheetView] = useState<'standard' | 't-format'>('standard')
 
   const report = useMemo(() => {
     const anchor = new Date(`${selectedDate}T12:00:00`)
@@ -1903,6 +1930,38 @@ function Reports({ sales, products, pettyCash, cashMovements, purchases, expense
     product.name.toLowerCase().includes(normalizedProductSearch),
   )
   const totalProductProfit = productPerformance.reduce((sum: number, entry: any) => sum + entry.profit, 0)
+  const currentAssetRows = [
+    { label: 'Cash', value: money(totals.cash) },
+    { label: 'Bank', value: money(totals.bank) },
+    { label: 'Mobile money and other accounts', value: money(totals.mobileMoney + totals.otherAccounts) },
+    { label: 'Petty cash', value: money(totals.pettyCashBalance) },
+    { label: 'Customer receivables', value: money(totals.owed) },
+    { label: 'Inventory', value: money(totals.inventory) },
+    { label: 'VAT receivable / VAT credit', value: totals.vatCredit ? money(totals.vatCredit) : '0 RWF' },
+  ]
+  const nonCurrentAssetRows = [
+    { label: 'Equipment', value: 'Not tracked' },
+    { label: 'Furniture', value: 'Not tracked' },
+    { label: 'Vehicles', value: 'Not tracked' },
+    { label: 'Other fixed assets', value: 'Not tracked' },
+    { label: 'Less: Accumulated depreciation', value: 'Not tracked' },
+  ]
+  const currentLiabilityRows = [
+    { label: 'Supplier payables', value: money(totals.owe) },
+    { label: 'VAT payable', value: totals.outputVat >= totals.inputVat ? money(totals.vatPayable) : '0 RWF' },
+    { label: 'Other payables', value: 'Not tracked' },
+  ]
+  const nonCurrentLiabilityRows = [
+    { label: 'Loans', value: 'Not tracked' },
+    { label: 'Other long-term liabilities', value: 'Not tracked' },
+  ]
+  const ownerEquityRows = [
+    { label: "Opening owner's capital", value: 'Not configured' },
+    { label: 'Capital contributions', value: money(totals.ownerContributions) },
+    { label: 'Retained earnings opening balance', value: 'Not configured' },
+    { label: 'Current period net profit', value: money(report.netProfit) },
+    { label: 'Less: Owner drawings', value: `−${money(totals.ownerDrawings)}`, deduction: true },
+  ]
 
   return (
     <>
@@ -1963,24 +2022,67 @@ function Reports({ sales, products, pettyCash, cashMovements, purchases, expense
           </div>
         </section>
         <section className="statement-section">
-          <h3>Financial position (current balances)</h3>
-          <div className="document-grid">
-            <div><span>Total assets (recorded balances)</span><strong>{money(totals.totalAssets)}</strong></div>
-            <div><span>Customer receivables</span><strong>{money(totals.owed)}</strong></div>
-            <div><span>Cash</span><strong>{money(totals.cash)}</strong></div>
-            <div><span>Bank</span><strong>{money(totals.bank)}</strong></div>
-            <div><span>Mobile money and other accounts</span><strong>{money(totals.mobileMoney + totals.otherAccounts)}</strong></div>
-            <div><span>Petty cash</span><strong>{money(totals.pettyCashBalance)}</strong></div>
-            <div><span>Total liabilities (recorded balances)</span><strong>{money(totals.totalLiabilities)}</strong></div>
-            <div><span>Supplier payables</span><strong>{money(totals.owe)}</strong></div>
-            <div><span>VAT payable</span><strong>{totals.outputVat >= totals.inputVat ? money(totals.vatPayable) : '0 RWF'}</strong></div>
-            <div><span>VAT credit</span><strong>{totals.vatCredit ? money(totals.vatCredit) : '0 RWF'}</strong></div>
-            <div><span>Owner capital contributions</span><strong>{money(totals.ownerContributions)}</strong></div>
-            <div><span>Retained earnings opening balance</span><strong>Not configured</strong></div>
-            <div><span>Current recorded equity estimate</span><strong>{money(totals.knownEquity)}</strong><small>Contributions + recorded net profit − personal drawings.</small></div>
-            <div><span>Unreconciled difference</span><strong className={Math.abs(totals.balanceDifference) < 1 ? 'green-text' : 'negative'}>{money(totals.balanceDifference)}</strong></div>
-            <div><span>Accounting equation check</span><strong>Incomplete: opening balances required</strong><small>Opening inventory, capital, retained earnings, and any unrecorded assets/liabilities are unknown; this difference is not a full balance assertion.</small></div>
+          <div className="balance-sheet-toolbar">
+            <div>
+              <span className="eyebrow">FINANCIAL POSITION</span>
+              <h3>Balance sheet</h3>
+              <p>Current recorded balances as at {selectedDate} · RWF</p>
+            </div>
+            <div className="balance-sheet-view-switch" role="group" aria-label="Balance sheet layout">
+              <button type="button" aria-pressed={balanceSheetView === 'standard'} className={balanceSheetView === 'standard' ? 'active' : ''} onClick={() => setBalanceSheetView('standard')}>Standard</button>
+              <button type="button" aria-pressed={balanceSheetView === 't-format'} className={balanceSheetView === 't-format' ? 'active' : ''} onClick={() => setBalanceSheetView('t-format')}>T-format</button>
+            </div>
           </div>
+          {balanceSheetView === 'standard' ? (
+            <div className="balance-sheet-standard">
+              <div className="balance-sheet-column">
+                <h4>Assets</h4>
+                <BalanceSheetGroup title="Current assets" rows={currentAssetRows} totalLabel="Total current assets" totalValue="Not separately calculated" />
+                <BalanceSheetGroup title="Non-current assets" rows={nonCurrentAssetRows} totalLabel="Total non-current assets" totalValue="Not tracked" />
+                <BalanceSheetGrandTotal label="Total assets (recorded balances)" value={money(totals.totalAssets)} />
+              </div>
+              <div className="balance-sheet-column">
+                <h4>Liabilities</h4>
+                <BalanceSheetGroup title="Current liabilities" rows={currentLiabilityRows} totalLabel="Total current liabilities" totalValue="Not separately calculated" />
+                <BalanceSheetGroup title="Non-current liabilities" rows={nonCurrentLiabilityRows} totalLabel="Total non-current liabilities" totalValue="Not tracked" />
+                <BalanceSheetGrandTotal label="Total liabilities (recorded balances)" value={money(totals.totalLiabilities)} />
+                <BalanceSheetGroup title="Owner’s equity" rows={ownerEquityRows} totalLabel="Current recorded equity estimate" totalValue={money(totals.knownEquity)} />
+                <BalanceSheetGrandTotal label="Total liabilities & owner’s equity" value="Not separately calculated" />
+              </div>
+            </div>
+          ) : (
+            <div className="balance-sheet-t">
+              <div className="balance-sheet-t-column">
+                <h4>Assets</h4>
+                <BalanceSheetGroup title="Current assets" rows={currentAssetRows} totalLabel="Total current assets" totalValue="Not separately calculated" />
+                <BalanceSheetGroup title="Non-current assets" rows={nonCurrentAssetRows} totalLabel="Total non-current assets" totalValue="Not tracked" />
+                <BalanceSheetGrandTotal label="Total assets (recorded balances)" value={money(totals.totalAssets)} />
+              </div>
+              <div className="balance-sheet-t-column">
+                <h4>Liabilities & owner’s equity</h4>
+                <BalanceSheetGroup title="Current liabilities" rows={currentLiabilityRows} totalLabel="Total current liabilities" totalValue="Not separately calculated" />
+                <BalanceSheetGroup title="Non-current liabilities" rows={nonCurrentLiabilityRows} totalLabel="Total non-current liabilities" totalValue="Not tracked" />
+                <BalanceSheetGrandTotal label="Total liabilities (recorded balances)" value={money(totals.totalLiabilities)} />
+                <BalanceSheetGroup title="Owner’s equity" rows={ownerEquityRows} totalLabel="Current recorded equity estimate" totalValue={money(totals.knownEquity)} />
+                <BalanceSheetGrandTotal label="Total liabilities & owner’s equity" value="Not separately calculated" />
+              </div>
+            </div>
+          )}
+          <section className="balance-check">
+            <div className="balance-check-heading">
+              <span className="balance-check-icon"><AlertTriangle /></span>
+              <div><h4>Balance check</h4><p>Accounting equation review</p></div>
+              <span className="balance-check-status">Incomplete</span>
+            </div>
+            <div className="balance-check-values">
+              <div><span>Total assets</span><strong>{money(totals.totalAssets)}</strong></div>
+              <div><span>Total liabilities</span><strong>{money(totals.totalLiabilities)}</strong></div>
+              <div><span>Owner’s equity estimate</span><strong>{money(totals.knownEquity)}</strong></div>
+              <div className="balance-check-difference"><span>Unreconciled difference</span><strong className={Math.abs(totals.balanceDifference) < 1 ? 'green-text' : 'negative'}>{money(totals.balanceDifference)}</strong></div>
+            </div>
+            <div className="balance-check-equation">Assets = Liabilities + Owner’s Equity</div>
+            <p className="balance-check-note">Incomplete: opening balances required. Opening inventory, capital, retained earnings, and any unrecorded assets/liabilities are unknown; this difference is not a full balance assertion.</p>
+          </section>
         </section>
       </div>
 

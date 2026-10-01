@@ -93,6 +93,51 @@ body { background:linear-gradient(135deg,#f8f9fa 0%,#eef5f5 100%); }
 .statement-section { margin-top:22px; }
 .statement-section h3 { margin:0 0 10px; font-size:14px; }
 .statement-section .document-grid { margin-top:0; }
+.balance-sheet-toolbar { display:flex; align-items:center; justify-content:space-between; gap:18px; padding:20px 22px; margin:24px 0 16px; border:1px solid #dce8eb; border-radius:14px; background:linear-gradient(120deg,#f4faf9,#f6f9fc); }
+.balance-sheet-toolbar h3 { margin:6px 0 4px; color:var(--foreground); font-size:20px; letter-spacing:-.4px; }
+.balance-sheet-toolbar p { margin:0; color:var(--muted); font-size:11px; }
+.balance-sheet-view-switch { display:inline-flex; flex:none; gap:4px; padding:4px; border:1px solid #dce8eb; border-radius:10px; background:#fff; }
+.balance-sheet-view-switch button { padding:8px 12px; border:0; border-radius:7px; color:var(--muted); background:transparent; font-size:11px; font-weight:800; transition:background .18s,color .18s,box-shadow .18s; }
+.balance-sheet-view-switch button:hover { color:var(--primary); background:#f2f7f8; }
+.balance-sheet-view-switch button.active { color:#fff; background:var(--primary); box-shadow:0 3px 8px rgba(10,72,111,.16); }
+.balance-sheet-standard { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+.balance-sheet-column,.balance-sheet-t-column { min-width:0; padding:20px; border:1px solid #e4ebee; border-radius:13px; background:linear-gradient(180deg,#fff 0%,#fcfdfd 100%); }
+.balance-sheet-column > h4,.balance-sheet-t-column > h4 { padding-bottom:12px; margin:0 0 15px; border-bottom:2px solid #dce9eb; color:var(--primary); font-size:13px; letter-spacing:.7px; text-transform:uppercase; }
+.balance-sheet-group { margin:0 0 19px; }
+.balance-sheet-group h5 { margin:0 0 8px; color:var(--teal); font-size:11px; letter-spacing:.35px; text-transform:uppercase; }
+.balance-sheet-rows { border-top:1px solid #edf1f3; }
+.balance-sheet-row,.balance-sheet-subtotal,.balance-sheet-grand-total { display:flex; align-items:baseline; justify-content:space-between; gap:16px; }
+.balance-sheet-row { min-height:37px; padding:9px 4px; border-bottom:1px solid #f0f3f4; }
+.balance-sheet-row > span { min-width:0; color:#536b78; font-size:11px; }
+.balance-sheet-row > strong { flex:none; color:var(--foreground); font-size:11px; font-variant-numeric:tabular-nums; text-align:right; }
+.balance-sheet-row.is-deduction > span,.balance-sheet-row.is-deduction > strong { color:var(--red); }
+.balance-sheet-subtotal { padding:11px 5px 0; color:var(--primary); font-size:10px; font-weight:800; }
+.balance-sheet-subtotal strong { color:var(--muted); font-size:10px; font-weight:700; text-align:right; }
+.balance-sheet-grand-total { align-items:center; padding:15px 14px; margin-top:10px; border:1px solid #cfe4e2; border-radius:9px; color:#fff; background:linear-gradient(110deg,var(--primary),#0d777b); box-shadow:0 7px 16px rgba(10,72,111,.12); }
+.balance-sheet-grand-total span { font-size:10px; font-weight:800; letter-spacing:.5px; text-transform:uppercase; }
+.balance-sheet-grand-total strong { font-size:15px; font-variant-numeric:tabular-nums; text-align:right; }
+.balance-sheet-t { display:grid; grid-template-columns:1fr 1fr; gap:0; overflow:hidden; border:1px solid #dce6e9; border-radius:13px; background:#fff; }
+.balance-sheet-t-column { padding:22px; border:0; border-radius:0; }
+.balance-sheet-t-column + .balance-sheet-t-column { border-left:2px solid #dce6e9; background:#fbfcfd; }
+.balance-sheet-t-column > h4 { min-height:38px; }
+.balance-check { padding:20px 22px; margin-top:18px; border:1px solid #e5e8dc; border-radius:13px; background:linear-gradient(120deg,#fffdf7,#fff); }
+.balance-check-heading { display:flex; align-items:center; gap:11px; }
+.balance-check-icon { display:grid; width:36px; height:36px; flex:none; place-items:center; border-radius:10px; color:#9b6a16; background:#fff3d8; }
+.balance-check-icon svg { width:18px; height:18px; }
+.balance-check-heading h4 { margin:0 0 3px; color:var(--foreground); font-size:13px; }
+.balance-check-heading p { margin:0; color:var(--muted); font-size:10px; }
+.balance-check-status { padding:6px 10px; margin-left:auto; border:1px solid #f0dfba; border-radius:999px; color:#8b6118; background:#fff6e3; font-size:10px; font-weight:800; }
+.balance-check-values { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin-top:17px; }
+.balance-check-values > div { min-width:0; padding:12px; border:1px solid #edf0e9; border-radius:9px; background:rgba(255,255,255,.8); }
+.balance-check-values span,.balance-check-values strong { display:block; }
+.balance-check-values span { min-height:26px; color:var(--muted); font-size:9px; line-height:1.4; }
+.balance-check-values strong { margin-top:5px; color:var(--foreground); font-size:13px; font-variant-numeric:tabular-nums; }
+.balance-check-values .balance-check-difference { border-color:#e5e8dc; background:#fafbf6; }
+.balance-check-equation { padding:11px 12px; margin-top:12px; border-radius:8px; color:var(--primary); background:#edf4f6; font-size:11px; font-weight:800; letter-spacing:.25px; text-align:center; }
+.balance-check-note { padding:10px 12px; margin:12px 0 0; border-left:3px solid #d8b86e; border-radius:0 7px 7px 0; color:#746a50; background:#fffaf0; font-size:10px; line-height:1.55; }
+@media(max-width:900px){ .balance-sheet-standard { grid-template-columns:1fr; } .balance-check-values { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media(max-width:720px){ .balance-sheet-toolbar { align-items:flex-start; flex-direction:column; padding:17px; } .balance-sheet-view-switch { width:100%; } .balance-sheet-view-switch button { flex:1; } .balance-sheet-column,.balance-sheet-t-column { padding:16px; } .balance-sheet-t { grid-template-columns:1fr; } .balance-sheet-t-column + .balance-sheet-t-column { border-top:2px solid #dce6e9; border-left:0; } .balance-check { padding:16px; } .balance-check-values { gap:7px; } .balance-check-values > div { padding:10px; } }
+@media print{ .balance-sheet-view-switch { display:none!important; } .balance-sheet-toolbar { padding:10px 0; border:0; background:#fff; } .balance-sheet-column,.balance-sheet-t-column { break-inside:avoid; box-shadow:none; } .balance-check { break-inside:avoid; } }
 @media(max-width:720px){ .report-controls { align-items:stretch; flex-direction:column; } .report-controls .primary-btn { margin-left:0; } .report-kpis { grid-template-columns:1fr; } .document-grid { grid-template-columns:1fr 1fr; } .stock-check-row .badge { display:none; } }
 @media print{ body *{visibility:hidden!important}.receipt,.receipt *,.financial-document,.financial-document *{visibility:visible!important}.receipt,.financial-document{position:absolute;left:0;top:0;width:100%;border:0;box-shadow:none}.financial-document{padding:0}.report-controls,.report-kpis,.table-panel,.page-heading,.topbar,.sidebar{display:none!important} }
 .payment-choice { display:flex; flex-wrap:wrap; gap:12px; margin:0 0 14px; padding:12px; border:1px solid var(--border); border-radius:9px; }
