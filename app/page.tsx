@@ -164,6 +164,7 @@ export default function Page() {
   const [username, setUsername] = useState('admin')
   const [password, setPassword] = useState('')
   const [loginError, setLoginError] = useState('')
+  const [purchaseDeleteError, setPurchaseDeleteError] = useState('')
   const [deleteConfirmation, setDeleteConfirmation] = useState<string | null>(null)
   const deleteConfirmationResolver = useRef<((confirmed: boolean) => void) | null>(null)
   const [page, setPage] = useState('Dashboard')
@@ -675,13 +676,19 @@ export default function Page() {
 
   const deleteInventoryPurchase = async (purchase: InventoryPurchase) => {
     if (!(await requestDeleteConfirmation(`Delete inventory purchase ${purchase.id}? Stock and the associated payable/payment will be reversed.`))) return
-    const response = await fetch(`/api/purchases/${encodeURIComponent(purchase.id)}`, { method: 'DELETE' })
-    const payload = await response.json()
-    if (!response.ok || !payload.ok) {
-      setLoginError(payload.error ?? 'Unable to delete inventory purchase.')
-      return
+    setPurchaseDeleteError('')
+    try {
+      const response = await fetch(`/api/purchases/${encodeURIComponent(purchase.id)}`, { method: 'DELETE' })
+      const payload = await response.json()
+      if (!response.ok || !payload.ok) {
+        setPurchaseDeleteError(payload.error ?? 'Unable to delete inventory purchase.')
+        return
+      }
+      await loadData()
+      setEditingPurchase((current) => current?.id === purchase.id ? null : current)
+    } catch (error) {
+      setPurchaseDeleteError(error instanceof Error ? error.message : 'Unable to delete inventory purchase.')
     }
-    await loadData()
   }
 
   const createBusinessExpense = async (input: { date: string; category: string; description: string; supplier: string; amountExclVat: number; vatAmount: number; paymentStatus: 'paid' | 'unpaid'; paymentMethod: string }) => {
@@ -903,7 +910,7 @@ export default function Page() {
           {page === 'Inventory' && (
             <Inventory products={products} setShowProduct={setShowProduct} setEditingProduct={setEditingProduct} deleteProduct={deleteProduct} search={search} setSearch={setSearch} />
           )}
-          {page === 'Finances' && <FinancePage debts={debts} pettyCash={pettyCash} cashMovements={cashMovements} ownerContributions={totals.ownerContributions} purchases={purchases} expenses={businessExpenses} accountBalances={accountBalances} onEditPettyCash={setEditingPettyCash} onDeletePettyCash={deletePettyCash} onEditPurchase={setEditingPurchase} onDeletePurchase={deleteInventoryPurchase} onEditExpense={setEditingExpense} onDeleteExpense={deleteBusinessExpense} setShowDebt={setShowDebt} setShowPurchase={() => setShowPurchase(true)} setShowExpense={() => setShowExpense(true)} onAddOwnerCapital={() => setShowOwnerCapital(true)} onReceivePettyCash={() => { setPettyCashAction('receive'); setShowPettyCash(true) }} onWithdrawPettyCash={() => { setPettyCashAction('withdraw'); setShowPettyCash(true) }} onRecordDrawing={() => { setPettyCashAction('drawing'); setShowPettyCash(true) }} onPayDebt={setPayingDebt} onEditDebt={setEditingDebt} onDeleteDebt={deleteDebt} />}
+          {page === 'Finances' && <FinancePage debts={debts} pettyCash={pettyCash} cashMovements={cashMovements} ownerContributions={totals.ownerContributions} purchases={purchases} expenses={businessExpenses} accountBalances={accountBalances} purchaseDeleteError={purchaseDeleteError} onEditPettyCash={setEditingPettyCash} onDeletePettyCash={deletePettyCash} onEditPurchase={setEditingPurchase} onDeletePurchase={deleteInventoryPurchase} onEditExpense={setEditingExpense} onDeleteExpense={deleteBusinessExpense} setShowDebt={setShowDebt} setShowPurchase={() => setShowPurchase(true)} setShowExpense={() => setShowExpense(true)} onAddOwnerCapital={() => setShowOwnerCapital(true)} onReceivePettyCash={() => { setPettyCashAction('receive'); setShowPettyCash(true) }} onWithdrawPettyCash={() => { setPettyCashAction('withdraw'); setShowPettyCash(true) }} onRecordDrawing={() => { setPettyCashAction('drawing'); setShowPettyCash(true) }} onPayDebt={setPayingDebt} onEditDebt={setEditingDebt} onDeleteDebt={deleteDebt} />}
           {page === 'Reports' && <Reports products={products} sales={sales} pettyCash={pettyCash} cashMovements={cashMovements} purchases={purchases} expenses={businessExpenses} totals={totals} />}
         </main>
       </div>
@@ -1016,7 +1023,7 @@ export default function Page() {
           }}
         />
       )}
-      {editingPurchase && <InventoryPurchaseModal purchase={editingPurchase} products={products} close={() => setEditingPurchase(null)} onCreateProduct={createProduct} onSave={(payload) => updateInventoryPurchase(editingPurchase.id, payload)} onDelete={() => void deleteInventoryPurchase(editingPurchase)} />}
+      {editingPurchase && <InventoryPurchaseModal purchase={editingPurchase} products={products} close={() => setEditingPurchase(null)} onCreateProduct={createProduct} onSave={(payload) => updateInventoryPurchase(editingPurchase.id, payload)} onDelete={() => void deleteInventoryPurchase(editingPurchase)} deleteError={purchaseDeleteError} />}
 
       {showExpense && (
         <BusinessExpenseModal
@@ -1558,7 +1565,7 @@ function DebtPaymentEditModal({ payment, close, onSave }: { payment: DebtPayment
   )
 }
 
-function FinancePage({ debts, pettyCash, cashMovements, ownerContributions, purchases, expenses, accountBalances, onEditPettyCash, onDeletePettyCash, onEditPurchase, onDeletePurchase, onEditExpense, onDeleteExpense, setShowDebt, setShowPurchase, setShowExpense, onAddOwnerCapital, onReceivePettyCash, onWithdrawPettyCash, onRecordDrawing, onPayDebt, onEditDebt, onDeleteDebt }: any) {
+function FinancePage({ debts, pettyCash, cashMovements, ownerContributions, purchases, expenses, accountBalances, purchaseDeleteError, onEditPettyCash, onDeletePettyCash, onEditPurchase, onDeletePurchase, onEditExpense, onDeleteExpense, setShowDebt, setShowPurchase, setShowExpense, onAddOwnerCapital, onReceivePettyCash, onWithdrawPettyCash, onRecordDrawing, onPayDebt, onEditDebt, onDeleteDebt }: any) {
   const customers = debts.filter((item: Debt) => item.kind === 'customer')
   const suppliers = debts.filter((item: Debt) => item.kind === 'supplier')
   const [customerSearch, setCustomerSearch] = useState('')
@@ -1711,6 +1718,7 @@ function FinancePage({ debts, pettyCash, cashMovements, ownerContributions, purc
           <div><h2>Inventory purchases</h2><p>Purchases increase stock; only items sold enter COGS.</p></div>
           <span className="count-badge teal-bg">{visiblePurchases.length} / {purchases.length}</span>
         </div>
+        {purchaseDeleteError ? <div className="error-text" role="alert">{purchaseDeleteError}</div> : null}
         <BrowseControls count={purchases.length} query={purchaseSearch} onQueryChange={setPurchaseSearch} scrollRef={purchaseListRef} placeholder="Search supplier, product or reference..." alwaysVisible />
         {visiblePurchases.length ? <div className={`purchase-history-list${visiblePurchases.length > 3 ? ' is-scrollable' : ''}`} ref={purchaseListRef}>
           {visiblePurchases.map((purchase: InventoryPurchase) => {
@@ -2684,7 +2692,7 @@ function OwnerCapitalModal({ close, onSave }: { close: () => void; onSave: (inpu
   )
 }
 
-function InventoryPurchaseModal({ purchase, products, close, onSave, onCreateProduct, onDelete }: { purchase?: InventoryPurchase | null; products: Product[]; close: () => void; onSave: (input: { supplier: string; date: string; items: { productId: number; qty: number; unitCost: number }[]; vatAmount: number; paidAmount: number; paymentMethod: string }) => Promise<void>; onCreateProduct: (input: ProductFormInput) => Promise<Product>; onDelete?: () => void }) {
+function InventoryPurchaseModal({ purchase, products, close, onSave, onCreateProduct, onDelete, deleteError }: { purchase?: InventoryPurchase | null; products: Product[]; close: () => void; onSave: (input: { supplier: string; date: string; items: { productId: number; qty: number; unitCost: number }[]; vatAmount: number; paidAmount: number; paymentMethod: string }) => Promise<void>; onCreateProduct: (input: ProductFormInput) => Promise<Product>; onDelete?: () => void; deleteError?: string }) {
   const [supplier, setSupplier] = useState(purchase?.supplier ?? '')
   const [date, setDate] = useState(purchase?.date ?? new Date().toISOString().slice(0, 10))
   const [productId, setProductId] = useState('')
@@ -2782,6 +2790,7 @@ function InventoryPurchaseModal({ purchase, products, close, onSave, onCreatePro
       {paymentTerms === 'cash' && <div className="form-grid purchase-payment-fields"><label>Payment account<select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)}><option value="cash">Cash</option><option value="petty_cash">Petty cash</option><option value="bank">Bank</option><option value="mobile_money">Mobile Money</option><option value="other">Other</option></select></label></div>}
       <div className="payment-remaining"><span>Inventory subtotal {money(subtotal)} · Purchase total {money(total)} · Paid now {money(paidAmount)}</span><strong>Supplier balance {money(Math.max(0, total - paidAmount))}</strong></div>
       {error ? <div className="error-text">{error}</div> : null}
+      {deleteError ? <div className="error-text" role="alert">{deleteError}</div> : null}
       {onDelete && <button className="danger-btn purchase-delete-action" type="button" onClick={onDelete}><Trash2 /> Delete purchase</button>}
       <button className="primary-btn full" disabled={saving || !supplier.trim() || !items.length || !paymentTermsValid || items.some((item) => item.qty <= 0 || item.unitCost < 0) || Number(vatAmount) < 0 || paidAmount < 0 || paidAmount > total} onClick={() => void save()}>{saving ? 'Saving purchase…' : purchase ? 'Save purchase changes' : paymentTerms === 'credit' ? 'Save credit purchase' : 'Save inventory purchase'} <Check /></button>
       {showProductForm && <ProductModal product={null} close={() => setShowProductForm(false)} onSave={async (input) => {
