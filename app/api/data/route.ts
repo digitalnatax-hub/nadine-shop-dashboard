@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { ensureDatabaseSchema, getCollection } from '@/lib/db'
+import { getPettyCashBalanceChange } from '@/lib/finance'
 
 export async function GET() {
   try {
@@ -83,8 +84,7 @@ export async function GET() {
     let pettyCashBalance = 0
     const pettyCashBalances = new Map<string, number>()
     for (const entry of chronologicalPettyCash) {
-      const amount = Number(entry.amount ?? 0)
-      pettyCashBalance += ['cash_in', 'owner_contribution', 'customer_payment', 'other_income', 'bank_transfer_in', 'cash_transfer_in'].includes(entry.type) ? amount : -amount
+      pettyCashBalance += getPettyCashBalanceChange(entry)
       pettyCashBalances.set(String(entry.id ?? entry._id), pettyCashBalance)
     }
 

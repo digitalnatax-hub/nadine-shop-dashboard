@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { ensureDatabaseSchema, getCollection } from '@/lib/db'
+import { getPettyCashBalance } from '@/lib/finance'
 
 async function changeLinkedBalance(entry: any, nextAmount: number, nextDate = entry.date) {
   const oldAmount = Number(entry.amount ?? 0)
@@ -87,10 +88,49 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       return NextResponse.json({ ok: false, error: 'Enter a positive amount, reason, and valid VAT amount.' }, { status: 400 })
     }
 
-    if (entry.type === 'transfer' || entry.type === 'bank_transfer_in' || entry.type === 'cash_transfer_in') {
+    if (['transfer', 'bank_transfer_in', 'cash_transfer_in'].includes(entry.type)) {
+      const cashMovements = await getCollection<any>('cash_movements')
+      const movementId = `TRANSFER-${id}`
+      const sourceAccount = entry.type === 'bank_transfer_in' ? 'bank' : entry.type === 'cash_transfer_in' ? 'cash' : 'petty_cash'
+      let availableBalance: number
+      if (sourceAccount === 'petty_cash') {
+        availableBalance = getPettyCashBalance(await entries.find({ _id: { $ne: entry._id } }).toArray())
+      } else {
+        const accountEntries = await cashMovements.find({ account: sourceAccount, id: { $ne: movementId } }).toArray()
+        availableBalance = accountEntries.reduce((sum, cashMovement) => sum + Number(cashMovement.amount ?? 0), 0)
+      }
+      if (!Number.isFinite(availableBalance)) {
+        throw new Error(`Unable to determine the available balance in ${sourceAccount.replaceAll('_', ' ')}.`)
+      }
+      if (amount > availableBalance) {
+        throw new Error(`Insufficient funds in ${sourceAccount.replaceAll('_', ' ')}. Available balance: ${availableBalance}.`)
+      }
       const account = entry.type === 'bank_transfer_in' ? 'bank' : entry.type === 'cash_transfer_in' ? 'cash' : entry.paymentMethod ?? 'cash'
       const movementAmount = entry.type === 'transfer' ? amount : -amount
-      await (await getCollection<any>('cash_movements')).updateOne({ id: `TRANSFER-${id}` }, { $set: { date, account, amount: movementAmount, reference: id } })
+      await cashMovements.updateOne({ id: movementId }, { $set: { date, account, amount: movementAmount, reference: id } })
+    }
+    if (entry.type === 'owner_drawing') {
+      const paymentMethod = entry.paymentMethod ?? 'petty_cash'
+      const cashMovements = await getCollection<any>('cash_movements')
+      const movement = await cashMovements.findOne({ id: `DRAWING-${id}` })
+      let availableBalance: number
+      if (paymentMethod === 'petty_cash') {
+        const pettyCashEntries = await entries.find({ _id: { $ne: entry._id } }).toArray()
+        availableBalance = getPettyCashBalance(pettyCashEntries)
+      } else {
+        const accountEntries = await cashMovements.find({ account: paymentMethod, id: { $ne: `DRAWING-${id}` } }).toArray()
+        availableBalance = accountEntries.reduce((sum, cashMovement) => sum + Number(cashMovement.amount ?? 0), 0)
+      }
+      if (!Number.isFinite(availableBalance)) {
+        throw new Error(`Unable to determine the available balance in ${paymentMethod.replaceAll('_', ' ')}.`)
+      }
+      if (amount > availableBalance) {
+        throw new Error(`Insufficient funds in ${paymentMethod.replaceAll('_', ' ')}. Available balance: ${availableBalance}.`)
+      }
+      if (paymentMethod !== 'petty_cash') {
+        if (!movement) throw new Error('The linked owner-drawing account movement was not found.')
+        await cashMovements.updateOne({ _id: movement._id }, { $set: { date, amount: -amount } })
+      }
     }
     await changeLinkedBalance(entry, amount, date)
     await entries.updateOne({ _id: entry._id }, { $set: { amount, reason, date, category, vatAmount } })
@@ -111,6 +151,9 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
     await changeLinkedBalance(entry, 0)
     if (entry.type === 'transfer' || entry.type === 'bank_transfer_in' || entry.type === 'cash_transfer_in') {
       await (await getCollection<any>('cash_movements')).deleteOne({ id: `TRANSFER-${id}` })
+    }
+    if (entry.type === 'owner_drawing') {
+      await (await getCollection<any>('cash_movements')).deleteOne({ id: `DRAWING-${id}` })
     }
     await entries.deleteOne({ _id: entry._id })
     return NextResponse.json({ ok: true })

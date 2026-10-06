@@ -30,7 +30,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   try {
     await ensureDatabaseSchema()
     debtId = Number((await params).id)
-    const body = await _request.json()
+    const body = await request.json()
     const debts = await getCollection<any>('debts')
     const debt = await debts.findOne({ id: debtId })
     if (!debt) return NextResponse.json({ ok: false, error: 'Debt record not found.' }, { status: 404 })

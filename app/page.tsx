@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { getPettyCashBalance } from '@/lib/finance'
 import {
   AlertTriangle,
   BarChart3,
@@ -252,7 +253,7 @@ export default function Page() {
     const todayOtherIncome = todayPettyCash.filter((entry) => entry.type === 'other_income').reduce((sum, entry) => sum + Number(entry.amount), 0)
     const todayOtherExpenses = todayPettyCash.filter((entry) => entry.type === 'other_expense').reduce((sum, entry) => sum + Number(entry.amount) - Number(entry.vatAmount ?? 0), 0)
     const todayExpenseRecords = businessExpenses.filter((entry) => entry.date === today)
-    const pettyCashBalance = pettyCash.reduce((balance, entry) => balance + (['owner_contribution', 'customer_payment', 'cash_in', 'other_income', 'bank_transfer_in', 'cash_transfer_in'].includes(entry.type) ? Number(entry.amount) : -Number(entry.amount)), 0)
+    const pettyCashBalance = getPettyCashBalance(pettyCash)
     const totalRevenue = recognizedSales.reduce((sum, entry) => sum + getSaleRevenue(entry), 0)
     const totalCogs = recognizedSales.flatMap((entry) => entry.items ?? []).reduce((sum, item) => sum + Number(item.buy ?? 0) * Number(item.qty ?? 0), 0)
     const totalOutputVat = recognizedSales.reduce((sum, entry) => sum + getSaleVat(entry), 0)
@@ -1614,7 +1615,7 @@ function FinancePage({ debts, pettyCash, cashMovements, ownerContributions, purc
   const pettyCashInflows = pettyCash.filter((entry: PettyCash) => ['owner_contribution', 'customer_payment', 'cash_in', 'other_income', 'bank_transfer_in', 'cash_transfer_in'].includes(entry.type)).reduce((sum: number, entry: PettyCash) => sum + Number(entry.amount), 0)
   const pettyCashOutflows = pettyCashEntries.filter((entry: PettyCash) => !['owner_contribution', 'customer_payment', 'cash_in', 'other_income', 'bank_transfer_in', 'cash_transfer_in'].includes(entry.type)).reduce((sum: number, entry: PettyCash) => sum + Number(entry.amount), 0)
   const ownerDrawingTotal = ownerDrawings.reduce((sum: number, entry: PettyCash) => sum + Number(entry.amount), 0)
-  const pettyCashAvailable = pettyCashInflows - pettyCashOutflows - ownerDrawingTotal
+  const pettyCashAvailable = getPettyCashBalance(pettyCash)
 
   return (
     <>
@@ -1792,7 +1793,7 @@ function FinancePage({ debts, pettyCash, cashMovements, ownerContributions, purc
           {visibleDrawings.length ? visibleDrawings.map((entry: PettyCash) => (
             <div className="petty-cash-entry" key={entry.id}>
               <span className="expense-indicator"><Users /></span>
-              <span className="expense-description"><strong>{entry.reason}</strong><small>{entry.category || 'Owner drawing'} · {new Date(`${entry.date}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} · {entry.user ?? 'unknown'} · Ref {entry.reference || entry.id}</small></span>
+              <span className="expense-description"><strong>{entry.reason}</strong><small>{entry.category || 'Owner drawing'} · From {entry.paymentMethod?.replaceAll('_', ' ') ?? 'petty cash'} · {new Date(`${entry.date}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} · {entry.user ?? 'unknown'} · Ref {entry.reference || entry.id}</small></span>
               <strong className="expense-amount">−{money(entry.amount)}</strong>
               <span className="transaction-row-actions"><button className="icon-btn" type="button" title="Edit owner drawing" aria-label={`Edit owner drawing ${entry.reason}`} onClick={() => onEditPettyCash(entry)}><Pencil /></button><button className="icon-btn danger-icon" type="button" title="Delete owner drawing" aria-label={`Delete owner drawing ${entry.reason}`} onClick={() => void onDeletePettyCash(entry)}><Trash2 /></button></span>
             </div>
@@ -2621,6 +2622,7 @@ function PettyCashModal({ action, close, onSave }: { action: 'receive' | 'withdr
   const [category, setCategory] = useState('Other operating expense')
   const [vatAmount, setVatAmount] = useState('0')
   const [transferAccount, setTransferAccount] = useState('cash')
+  const [drawingAccount, setDrawingAccount] = useState('')
   const receiving = action === 'receive'
 
   const save = async () => {
@@ -2643,13 +2645,13 @@ function PettyCashModal({ action, close, onSave }: { action: 'receive' | 'withdr
                 : ['expense', 'other_expense'].includes(type)
                   ? category
                   : 'Cash transfer'
-    await onSave({ amount: Number(amount), reason: reason.trim(), date, type: normalizedType as PettyCash['type'], category: movementCategory, vatAmount: ['expense', 'other_expense'].includes(type) ? Number(vatAmount || 0) : 0, paymentMethod: transferAccount })
+    await onSave({ amount: Number(amount), reason: reason.trim(), date, type: normalizedType as PettyCash['type'], category: movementCategory, vatAmount: ['expense', 'other_expense'].includes(type) ? Number(vatAmount || 0) : 0, paymentMethod: action === 'drawing' ? drawingAccount : transferAccount })
   }
 
   return (
     <Modal title={receiving ? 'Add money to Petty Cash' : action === 'drawing' ? 'Record owner drawing' : 'Withdraw from Petty Cash'} close={close}>
       <div className="form-grid">
-        {action === 'drawing' ? <label>Category<input readOnly value="Owner drawing" /></label> : <label>{receiving ? 'Source type' : 'Withdrawal type'}<select required value={type} onChange={(event) => setType(event.target.value)}><option value="">{receiving ? 'Choose where the money came from' : 'Choose withdrawal purpose'}</option>{receiving ? <><option value="owner_contribution">Owner capital contribution</option><option value="opening_balance">Opening petty cash balance</option><option value="bank_transfer_in">Transfer from bank</option><option value="cash_transfer_in">Transfer from main cash</option><option value="other_income">Other business income</option></> : <><option value="expense">Business purpose</option><option value="other_expense">Other business expense</option><option value="owner_drawing">Personal expense</option><option value="transfer">Transfer to another account</option></>}</select></label>}
+        {action === 'drawing' ? <><label>Category<input readOnly value="Owner drawing" /></label><label>Account to draw from<select required value={drawingAccount} onChange={(event) => setDrawingAccount(event.target.value)}><option value="">Select an account</option><option value="petty_cash">Petty cash</option><option value="cash">Main cash</option><option value="bank">Bank</option><option value="mobile_money">Mobile Money</option><option value="other">Other</option></select></label></> : <label>{receiving ? 'Source type' : 'Withdrawal type'}<select required value={type} onChange={(event) => setType(event.target.value)}><option value="">{receiving ? 'Choose where the money came from' : 'Choose withdrawal purpose'}</option>{receiving ? <><option value="owner_contribution">Owner capital contribution</option><option value="opening_balance">Opening petty cash balance</option><option value="bank_transfer_in">Transfer from bank</option><option value="cash_transfer_in">Transfer from main cash</option><option value="other_income">Other business income</option></> : <><option value="expense">Business purpose</option><option value="other_expense">Other business expense</option><option value="owner_drawing">Personal expense</option><option value="transfer">Transfer to another account</option></>}</select></label>}
         {!receiving && ['expense', 'other_expense'].includes(type) && <label>Expense category<select value={category} onChange={(event) => setCategory(event.target.value)}><option>Rent</option><option>Electricity</option><option>Internet</option><option>Transport</option><option>Salaries</option><option>Repairs</option><option>Packaging</option><option>Advertising</option><option>Bank charges</option><option>Cleaning</option><option>Office supplies</option><option>Other operating expense</option></select></label>}
         <label>Amount<input type="number" min="1" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="RWF" /></label>
         <label>Date<input type="date" value={date} onChange={(event) => setDate(event.target.value)} /></label>
@@ -2657,7 +2659,7 @@ function PettyCashModal({ action, close, onSave }: { action: 'receive' | 'withdr
         {!receiving && type === 'transfer' && <label>Transfer destination<select value={transferAccount} onChange={(event) => setTransferAccount(event.target.value)}><option value="cash">Main cash</option><option value="bank">Bank</option><option value="mobile_money">Mobile Money</option><option value="other">Other</option></select></label>}
         <label>{receiving ? 'Source / reason' : action === 'drawing' ? 'Reason for withdrawal' : 'Purpose / explanation'}<input value={reason} onChange={(event) => setReason(event.target.value)} placeholder={receiving ? 'e.g. Owner added working cash' : type === 'owner_drawing' ? 'e.g. Personal use' : 'e.g. Bought cleaning materials'} /></label>
       </div>
-      <button className="primary-btn full" disabled={!type || !amount || Number(amount) <= 0 || !reason.trim()} onClick={() => void save()}>{receiving ? 'Add money to petty cash' : type === 'owner_drawing' ? 'Save personal withdrawal' : type === 'transfer' ? 'Record cash transfer' : 'Save business withdrawal'} <Wallet /></button>
+      <button className="primary-btn full" disabled={!type || !amount || Number(amount) <= 0 || !reason.trim() || action === 'drawing' && !drawingAccount} onClick={() => void save()}>{receiving ? 'Add money to petty cash' : type === 'owner_drawing' ? 'Save personal withdrawal' : type === 'transfer' ? 'Record cash transfer' : 'Save business withdrawal'} <Wallet /></button>
     </Modal>
   )
 }
