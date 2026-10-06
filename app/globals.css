@@ -406,17 +406,19 @@ body { background:linear-gradient(135deg,#f8f9fa 0%,#eef5f5 100%); }
 .dashboard-activity-amount.is-outgoing { color:var(--red); }
 .dashboard-journal-panel { margin-top:18px; }
 .dashboard-journal-panel .panel-head { align-items:center; margin-bottom:8px; }
-.dashboard-journal-list { display:flex; flex-direction:column; }
-.dashboard-journal-list.side-scroll-list { max-height:360px; overflow-y:scroll; }
-.dashboard-journal-row { display:grid; grid-template-columns:94px minmax(150px,1fr) minmax(100px,.7fr) auto minmax(100px,.7fr) auto; align-items:center; gap:12px; min-height:66px; padding:10px 4px; border-bottom:1px solid #edf1f3; }
-.dashboard-journal-row:last-child { border-bottom:0; }
-.dashboard-journal-date,.dashboard-journal-account { color:var(--muted); font-size:10px; }
-.dashboard-journal-description { display:grid; min-width:0; gap:4px; }
-.dashboard-journal-description strong { overflow:hidden; color:var(--foreground); font-size:11px; text-overflow:ellipsis; white-space:nowrap; }
-.dashboard-journal-description small { overflow:hidden; color:var(--muted); font-size:9px; text-overflow:ellipsis; white-space:nowrap; }
-.dashboard-journal-account { display:grid; gap:3px; }
-.dashboard-journal-account small { color:var(--teal); font-size:8px; font-weight:800; text-transform:uppercase; }
-.dashboard-journal-amount { color:var(--foreground); font-size:10px; font-variant-numeric:tabular-nums; text-align:right; white-space:nowrap; }
+.dashboard-journal-list { overflow-x:auto; }
+.dashboard-journal-list.side-scroll-list { display:block; max-height:360px; overflow-x:auto; overflow-y:scroll; }
+.dashboard-journal-table { width:100%; min-width:650px; border-collapse:collapse; text-align:left; font-size:11px; }
+.dashboard-journal-table th { position:sticky; top:0; z-index:1; padding:10px 9px; border-bottom:1px solid var(--border); color:var(--muted); background:#f7faf9; font-size:9px; font-weight:800; text-transform:uppercase; white-space:nowrap; }
+.dashboard-journal-table td { padding:9px; border-bottom:1px solid #edf1f3; color:var(--foreground); vertical-align:top; }
+.dashboard-journal-table tbody tr:nth-child(2n) td { padding-top:2px; border-bottom:1px solid #e3e9ed; }
+.dashboard-journal-table td:first-child,.dashboard-journal-table td:nth-child(3) { color:var(--muted); font-size:10px; }
+.dashboard-journal-table td:nth-child(2) { min-width:230px; }
+.dashboard-journal-table td:nth-child(2) strong,.dashboard-journal-table td:nth-child(2) small { display:block; }
+.dashboard-journal-table td:nth-child(2) strong { font-size:11px; }
+.dashboard-journal-table td:nth-child(2) small { margin-top:3px; color:var(--muted); font-size:9px; }
+.dashboard-journal-table .dashboard-journal-credit-particular { padding-left:24px; font-style:italic; }
+.dashboard-journal-table .dashboard-journal-amount { min-width:108px; text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
 .opening-stock-payment { padding:14px; margin-top:14px; border:1px solid #e1ebec; border-radius:9px; background:#f8fbfb; }
 .opening-stock-summary { display:flex; align-items:baseline; justify-content:space-between; gap:8px; flex-wrap:wrap; }
 .opening-stock-summary span { color:var(--muted); font-size:11px; font-weight:800; }
@@ -425,4 +427,4 @@ body { background:linear-gradient(135deg,#f8f9fa 0%,#eef5f5 100%); }
 .opening-stock-payment .payment-choice { margin:13px 0 8px; }
 .opening-stock-field { display:grid; gap:6px; color:var(--foreground); font-size:11px; font-weight:700; }
 .opening-stock-field input,.opening-stock-field select { min-width:0; height:40px; padding:0 10px; border:1px solid var(--border); border-radius:8px; color:var(--foreground); background:#fff; }
-@media(max-width:720px){ .finance-actions { justify-content:stretch; margin-top:0; } .finance-actions > * { flex:1 1 calc(50% - 9px); justify-content:center; } .purchase-history-row { grid-template-columns:1fr 1fr auto; gap:8px 12px; } .purchase-history-row > div { grid-column:1/-1; } .purchase-history-row > span small { text-align:left; } .business-expense-row { grid-template-columns:minmax(0,1fr) auto; gap:8px; } .business-expense-row > span:first-child { grid-column:1/-1; } .purchase-add-row { align-items:stretch; flex-wrap:wrap; } .purchase-add-row label { flex-basis:100%; } .purchase-add-row .outline-btn { flex:1; padding:8px; font-size:11px; justify-content:center; } .purchase-line { grid-template-columns:1fr 1fr 32px; } .purchase-line > strong { grid-column:1/-1; } .purchase-line label { min-width:0; } .dashboard-activity-row { grid-template-columns:32px minmax(0,1fr) auto; gap:8px; } .dashboard-activity-account { grid-column:2; text-align:left; } .dashboard-activity-amount { grid-column:3; grid-row:1/3; } .dashboard-journal-row { grid-template-columns:74px minmax(0,1fr) auto auto; gap:7px; } .dashboard-journal-date { grid-column:1; grid-row:1/3; } .dashboard-journal-description { grid-column:2/-1; } .dashboard-journal-account { grid-column:2; grid-template-columns:auto 1fr; align-items:center; } .dashboard-journal-row .dashboard-journal-account:nth-of-type(5) { grid-column:3; } .dashboard-journal-amount { text-align:right; } }
+@media(max-width:720px){ .finance-actions { justify-content:stretch; margin-top:0; } .finance-actions > * { flex:1 1 calc(50% - 9px); justify-content:center; } .purchase-history-row { grid-template-columns:1fr 1fr auto; gap:8px 12px; } .purchase-history-row > div { grid-column:1/-1; } .purchase-history-row > span small { text-align:left; } .business-expense-row { grid-template-columns:minmax(0,1fr) auto; gap:8px; } .business-expense-row > span:first-child { grid-column:1/-1; } .purchase-add-row { align-items:stretch; flex-wrap:wrap; } .purchase-add-row label { flex-basis:100%; } .purchase-add-row .outline-btn { flex:1; padding:8px; font-size:11px; justify-content:center; } .purchase-line { grid-template-columns:1fr 1fr 32px; } .purchase-line > strong { grid-column:1/-1; } .purchase-line label { min-width:0; } .dashboard-activity-row { grid-template-columns:32px minmax(0,1fr) auto; gap:8px; } .dashboard-activity-account { grid-column:2; text-align:left; } .dashboard-activity-amount { grid-column:3; grid-row:1/3; } .dashboard-journal-table { min-width:620px; } }

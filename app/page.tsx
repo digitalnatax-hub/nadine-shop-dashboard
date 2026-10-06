@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { getPettyCashBalance } from '@/lib/finance'
 import {
   AlertTriangle,
@@ -1317,8 +1317,8 @@ function Dashboard({ totals, lowStock, sales, products, pettyCash, purchases, ex
     const counterpart = entry.title === 'Cash sale' ? 'Sales revenue'
       : entry.title === 'Customer debt payment' ? 'Customer receivable'
         : entry.title === 'Supplier payment' ? 'Supplier payable'
-          : entry.title === 'Inventory purchase payment' ? 'Inventory / supplier payable'
-            : entry.title === 'Business expense payment' || entry.title === 'Business expense' ? entry.detail.split(' · ')[0] || 'Business expenses'
+          : entry.title === 'Inventory purchase payment' ? 'Inventory'
+            : entry.title === 'Business expense payment' || entry.title === 'Business expense' ? `${entry.detail.split(' · ')[0] || 'Business expense'} expense`
               : entry.title === 'Owner capital added' || entry.title === 'Owner contribution' ? "Owner's capital"
                 : entry.title === 'Owner drawing' ? 'Owner drawings'
                   : entry.title === 'Other business income' ? 'Other business income'
@@ -1526,19 +1526,29 @@ function Dashboard({ totals, lowStock, sales, products, pettyCash, purchases, ex
         </div>
         <BrowseControls count={journalEntries.length} query={journalSearch} onQueryChange={setJournalSearch} scrollRef={journalListRef} placeholder="Search journal, account, date or reference..." alwaysVisible />
         <div className={`dashboard-journal-list ${visibleJournalEntries.length > 3 ? 'side-scroll-list' : ''}`} ref={journalListRef}>
-          {visibleJournalEntries.length ? visibleJournalEntries.map((entry) => (
-            <div className="dashboard-journal-row" key={entry.id}>
-              <span className="dashboard-journal-date">{new Date(`${entry.date}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
-              <span className="dashboard-journal-description">
-                <strong>{entry.title}</strong>
-                <small>{entry.detail} · Ref {entry.reference || '—'}</small>
-              </span>
-              <span className="dashboard-journal-account"><small>Debit</small>{entry.debitAccount}</span>
-              <strong className="dashboard-journal-amount">{money(entry.amount)}</strong>
-              <span className="dashboard-journal-account"><small>Credit</small>{entry.creditAccount}</span>
-              <strong className="dashboard-journal-amount">{money(entry.amount)}</strong>
-            </div>
-          )) : <div className="empty-state">{journalEntries.length ? 'No journal entries match your search.' : 'Recorded journal entries will appear here.'}</div>}
+          {visibleJournalEntries.length ? (
+            <table className="dashboard-journal-table">
+              <thead><tr><th>Date</th><th>Particulars</th><th>L.F.</th><th>Debit (Dr.)</th><th>Credit (Cr.)</th></tr></thead>
+              <tbody>{visibleJournalEntries.map((entry) => (
+                <Fragment key={entry.id}>
+                  <tr>
+                    <td>{new Date(`${entry.date}T12:00:00`).toLocaleDateString('en-CA')}</td>
+                    <td><strong>{entry.debitAccount} A/c Dr.</strong><small>{entry.title} · {entry.detail}</small></td>
+                    <td>{entry.reference || '—'}</td>
+                    <td className="dashboard-journal-amount">{money(entry.amount)}</td>
+                    <td />
+                  </tr>
+                  <tr>
+                    <td />
+                    <td className="dashboard-journal-credit-particular">To {entry.creditAccount} A/c</td>
+                    <td />
+                    <td />
+                    <td className="dashboard-journal-amount">{money(entry.amount)}</td>
+                  </tr>
+                </Fragment>
+              ))}</tbody>
+            </table>
+          ) : <div className="empty-state">{journalEntries.length ? 'No journal entries match your search.' : 'Recorded journal entries will appear here.'}</div>}
         </div>
       </div>
     </>
