@@ -177,6 +177,7 @@ export default function Page() {
   const [purchases, setPurchases] = useState<InventoryPurchase[]>([])
   const [debtPayments, setDebtPayments] = useState<DebtPayment[]>([])
   const [accountBalances, setAccountBalances] = useState({ cash: 0, bank: 0, mobile_money: 0, other: 0 })
+  const [openingEquityAdjustment, setOpeningEquityAdjustment] = useState(0)
   const [cashMovements, setCashMovements] = useState<{ id: string; date: string; account: string; type: string; amount: number; reference: string; user?: string }[]>([])
   const [businessExpenses, setBusinessExpenses] = useState<BusinessExpense[]>([])
   const [showProduct, setShowProduct] = useState(false)
@@ -231,6 +232,7 @@ export default function Page() {
     setPurchases(payload.purchases ?? [])
     setDebtPayments(payload.debtPayments ?? [])
     setAccountBalances(payload.accountBalances ?? { cash: 0, bank: 0, mobile_money: 0, other: 0 })
+    setOpeningEquityAdjustment(Number(payload.openingEquityAdjustment ?? 0))
     setCashMovements(payload.cashMovements ?? [])
     setBusinessExpenses(payload.expenses ?? [])
   }
@@ -272,7 +274,7 @@ export default function Page() {
     const knownLiabilities = totalPayables + Math.max(0, totalOutputVat - totalInputVat)
     const ownerCapitalContributions = cashMovements.filter((movement) => movement.type === 'owner_capital').reduce((sum, movement) => sum + Number(movement.amount), 0)
     const ownerContributions = pettyCash.filter((entry) => entry.type === 'owner_contribution').reduce((sum, entry) => sum + Number(entry.amount), 0) + ownerCapitalContributions
-    const knownEquity = ownerContributions + totalNetProfit - pettyCash.filter((entry) => entry.type === 'owner_drawing').reduce((sum, entry) => sum + Number(entry.amount), 0)
+    const knownEquity = openingEquityAdjustment + ownerContributions + totalNetProfit - pettyCash.filter((entry) => entry.type === 'owner_drawing').reduce((sum, entry) => sum + Number(entry.amount), 0)
 
     return {
       sales: totalRevenue,
@@ -288,6 +290,7 @@ export default function Page() {
       pettyCashBalance,
       ownerDrawings: pettyCash.filter((entry) => entry.type === 'owner_drawing').reduce((sum, entry) => sum + Number(entry.amount), 0),
       ownerContributions,
+      openingEquityAdjustment,
       ownerCapitalCount: pettyCash.filter((entry) => entry.type === 'owner_contribution').length + cashMovements.filter((movement) => movement.type === 'owner_capital').length,
       cash: accountBalances.cash,
       bank: accountBalances.bank,
@@ -302,7 +305,7 @@ export default function Page() {
       knownEquity,
       balanceDifference: knownAssets - knownLiabilities - knownEquity,
     }
-  }, [sales, debts, pettyCash, products, purchases, accountBalances, businessExpenses, cashMovements])
+  }, [sales, debts, pettyCash, products, purchases, accountBalances, businessExpenses, cashMovements, openingEquityAdjustment])
 
   const lowStock = products.filter((product) => product.stock <= product.min)
 
@@ -1966,7 +1969,7 @@ function Reports({ sales, products, pettyCash, cashMovements, purchases, expense
     { label: 'Other long-term liabilities', value: 'Not tracked' },
   ]
   const ownerEquityRows = [
-    { label: "Opening owner's capital", value: 'Not configured' },
+    { label: 'Opening equity reconciliation', value: money(totals.openingEquityAdjustment) },
     { label: 'Capital contributions', value: money(totals.ownerContributions) },
     { label: 'Retained earnings opening balance', value: 'Not configured' },
     { label: 'Current period net profit', value: money(report.netProfit) },

@@ -75,6 +75,21 @@ export async function GET() {
     const purchases = await purchasesCol.find({}).sort({ date: -1, _id: -1 }).toArray()
     const expenses = await expensesCol.find({}).sort({ date: -1, _id: -1 }).toArray()
     const cashMovements = await cashMovementsCol.find({}).sort({ date: -1, _id: -1 }).toArray()
+    const financeSettings = await getCollection<any>('finance_settings')
+    const openingEquityId = 'opening-equity-adjustment'
+    if (sales.length || debts.length || pettyCash.length || debtPayments.length || purchases.length || expenses.length || cashMovements.length) {
+      await financeSettings.updateOne(
+        { id: openingEquityId },
+        { $setOnInsert: {
+          id: openingEquityId,
+          amount: 700,
+          reason: 'Opening equity reconciliation for balances recorded before the finance ledger was complete.',
+          createdAt: new Date(),
+        } },
+        { upsert: true },
+      )
+    }
+    const openingEquity = await financeSettings.findOne({ id: openingEquityId })
     const accountBalances = { cash: 0, bank: 0, mobile_money: 0, other: 0 }
     for (const movement of cashMovements) {
       const account = movement.account as keyof typeof accountBalances
@@ -184,6 +199,7 @@ export async function GET() {
         reference: movement.reference ?? '',
         user: movement.user ?? 'unknown',
       })),
+      openingEquityAdjustment: Number(openingEquity?.amount ?? 0),
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unable to load shop data.'
