@@ -1075,9 +1075,11 @@ function Dashboard({ totals, lowStock, sales, products, pettyCash, purchases, ex
   const [stockSearch, setStockSearch] = useState('')
   const [revenueSearch, setRevenueSearch] = useState('')
   const [activitySearch, setActivitySearch] = useState('')
+  const [journalSearch, setJournalSearch] = useState('')
   const stockListRef = useRef<HTMLDivElement>(null)
   const revenueListRef = useRef<HTMLDivElement>(null)
   const activityListRef = useRef<HTMLDivElement>(null)
+  const journalListRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const hour = new Date().getHours()
@@ -1303,6 +1305,38 @@ function Dashboard({ totals, lowStock, sales, products, pettyCash, purchases, ex
   const visibleActivity = activityItems.filter((entry) =>
     `${entry.title} ${entry.detail} ${entry.account} ${entry.amount} ${entry.user} ${entry.reference} ${entry.date}`.toLowerCase().includes(activitySearch.trim().toLowerCase()),
   )
+  const journalEntries = activityItems.map((entry) => {
+    if (entry.title === 'Petty cash transfer') {
+      const [source, destination] = entry.detail.split(' → ')
+      return {
+        ...entry,
+        debitAccount: destination || 'Petty cash',
+        creditAccount: source || 'Cash',
+      }
+    }
+    const counterpart = entry.title === 'Cash sale' ? 'Sales revenue'
+      : entry.title === 'Customer debt payment' ? 'Customer receivable'
+        : entry.title === 'Supplier payment' ? 'Supplier payable'
+          : entry.title === 'Inventory purchase payment' ? 'Inventory / supplier payable'
+            : entry.title === 'Business expense payment' || entry.title === 'Business expense' ? entry.detail.split(' · ')[0] || 'Business expenses'
+              : entry.title === 'Owner capital added' || entry.title === 'Owner contribution' ? "Owner's capital"
+                : entry.title === 'Owner drawing' ? 'Owner drawings'
+                  : entry.title === 'Other business income' ? 'Other business income'
+                    : entry.title === 'Credit sale recorded' ? 'Sales revenue'
+                      : entry.title === 'Inventory received on credit' ? 'Inventory'
+                        : entry.title === 'Expense recorded on credit' || entry.title === 'Partially paid expense' ? entry.detail.split(' · ')[0] || 'Business expenses'
+                          : entry.title === 'Petty cash transfer' ? entry.detail.split(' → ')[0] || 'Cash'
+                            : entry.title.replaceAll('_', ' ')
+    const isOutgoing = ['Supplier payment', 'Inventory purchase payment', 'Business expense payment', 'Business expense', 'Owner drawing', 'Expense recorded on credit', 'Partially paid expense', 'Inventory received on credit'].includes(entry.title)
+    return {
+      ...entry,
+      debitAccount: isOutgoing ? counterpart : entry.account,
+      creditAccount: isOutgoing ? entry.account : counterpart,
+    }
+  }).sort((left, right) => right.date.localeCompare(left.date) || right.id.localeCompare(left.id))
+  const visibleJournalEntries = journalEntries.filter((entry) =>
+    `${entry.date} ${entry.title} ${entry.detail} ${entry.account} ${entry.debitAccount} ${entry.creditAccount} ${entry.amount} ${entry.user} ${entry.reference}`.toLowerCase().includes(journalSearch.trim().toLowerCase()),
+  )
 
   const cards = [
     { label: "Today's sales (excl. VAT)", value: money(totals.todaySales || 0), color: 'teal', icon: ShoppingCart, change: `${totals.todaySaleCount} sale${totals.todaySaleCount === 1 ? '' : 's'} today` },
@@ -1479,6 +1513,32 @@ function Dashboard({ totals, lowStock, sales, products, pettyCash, purchases, ex
               <strong className={`dashboard-activity-amount ${entry.incoming ? 'is-incoming' : 'is-outgoing'}`}>{entry.incoming ? '+' : '−'}{money(entry.amount)}</strong>
             </div>
           )) : <div className="empty-state">{activityItems.length ? 'No activity matches your search.' : 'Recorded system activity will appear here.'}</div>}
+        </div>
+      </div>
+
+      <div className="panel dashboard-journal-panel">
+        <div className="panel-head">
+          <div>
+            <h2>Journal</h2>
+            <p>Double-entry view of recorded system transactions</p>
+          </div>
+          <span className="count-badge teal-bg">{journalEntries.length}</span>
+        </div>
+        <BrowseControls count={journalEntries.length} query={journalSearch} onQueryChange={setJournalSearch} scrollRef={journalListRef} placeholder="Search journal, account, date or reference..." alwaysVisible />
+        <div className={`dashboard-journal-list ${visibleJournalEntries.length > 3 ? 'side-scroll-list' : ''}`} ref={journalListRef}>
+          {visibleJournalEntries.length ? visibleJournalEntries.map((entry) => (
+            <div className="dashboard-journal-row" key={entry.id}>
+              <span className="dashboard-journal-date">{new Date(`${entry.date}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+              <span className="dashboard-journal-description">
+                <strong>{entry.title}</strong>
+                <small>{entry.detail} · Ref {entry.reference || '—'}</small>
+              </span>
+              <span className="dashboard-journal-account"><small>Debit</small>{entry.debitAccount}</span>
+              <strong className="dashboard-journal-amount">{money(entry.amount)}</strong>
+              <span className="dashboard-journal-account"><small>Credit</small>{entry.creditAccount}</span>
+              <strong className="dashboard-journal-amount">{money(entry.amount)}</strong>
+            </div>
+          )) : <div className="empty-state">{journalEntries.length ? 'No journal entries match your search.' : 'Recorded journal entries will appear here.'}</div>}
         </div>
       </div>
     </>
