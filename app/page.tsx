@@ -1526,8 +1526,9 @@ function DebtPaymentModal({ debt, close, onPay }: { debt: Debt; close: () => voi
       </div>
       <div className="form-grid">
         <label>Amount being paid<input type="number" min="1" max={debt.amount} step="1" autoFocus value={amount} onChange={(event) => setAmount(event.target.value)} /></label>
-        <label>Payment method<select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)}><option value="cash">Cash</option><option value="petty_cash">Petty cash</option><option value="bank">Bank</option><option value="mobile_money">Mobile Money</option><option value="other">Other</option></select></label>
+        <label>{debt.kind === 'customer' ? 'Deposit / receive into account' : 'Payment account'}<select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)}><option value="cash">Main cash</option><option value="petty_cash">Petty cash</option><option value="bank">Bank</option><option value="mobile_money">Mobile Money</option><option value="other">Other</option></select></label>
       </div>
+      {debt.kind === 'customer' && <small>Receiving a debt payment reduces the customer receivable; it does not record new sales revenue.</small>}
       <div className="payment-remaining"><span>Balance remaining after payment</span><strong>{money(remaining)}</strong></div>
       {error ? <div className="error-text">{error}</div> : null}
       <button className="primary-btn full" disabled={saving || !Number.isFinite(payment) || payment <= 0 || payment > debt.amount} onClick={() => void submit()}>{saving ? 'Recording payment…' : `Record ${money(payment || 0)} payment`} <Check /></button>
@@ -1558,7 +1559,7 @@ function DebtPaymentEditModal({ payment, close, onSave }: { payment: DebtPayment
       <div className="form-grid">
         <label>Payment date<input type="date" value={date} onChange={(event) => setDate(event.target.value)} /></label>
         <label>Amount<input type="number" min="1" value={amount} onChange={(event) => setAmount(event.target.value)} /></label>
-        <label>Payment account<select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)}><option value="cash">Cash</option><option value="petty_cash">Petty cash</option><option value="bank">Bank</option><option value="mobile_money">Mobile Money</option><option value="other">Other</option></select></label>
+        <label>{payment.kind === 'customer' ? 'Deposit / receive into account' : 'Payment account'}<select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)}><option value="cash">Main cash</option><option value="petty_cash">Petty cash</option><option value="bank">Bank</option><option value="mobile_money">Mobile Money</option><option value="other">Other</option></select></label>
       </div>
       {error ? <div className="error-text">{error}</div> : null}
       <button className="primary-btn full" disabled={saving || Number(amount) <= 0} onClick={() => void save()}>{saving ? 'Saving payment…' : 'Save payment changes'} <Check /></button>
