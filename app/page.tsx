@@ -133,7 +133,7 @@ type CartItem = {
   qty: number
 }
 
-const money = (value: number) => `${Math.round(value).toLocaleString('en-US')} RWF`
+const money = (value: number) => `${(Math.round(value) || 0).toLocaleString('en-US')} RWF`
 const getLocalDateInputValue = () => {
   const date = new Date()
   const offset = date.getTimezoneOffset() * 60_000
@@ -906,7 +906,7 @@ export default function Page() {
 
         <main className="content">
           {page === 'Dashboard' && (
-            <Dashboard totals={totals} lowStock={lowStock} sales={sales} products={products} setShowSale={setShowSale} />
+            <Dashboard totals={totals} lowStock={lowStock} sales={sales} products={products} pettyCash={pettyCash} purchases={purchases} expenses={businessExpenses} debts={debts} debtPayments={debtPayments} cashMovements={cashMovements} setShowSale={setShowSale} />
           )}
           {page === 'Sales' && (
             <SalesPage sales={sales} products={products} setShowSale={setShowSale} setReceipt={setReceipt} setEditingSale={setEditingSale} deleteSale={deleteSale} search={search} setSearch={setSearch} />
@@ -1070,12 +1070,14 @@ function Header({ title, subtitle, action, onAction }: { title: string; subtitle
   )
 }
 
-function Dashboard({ totals, lowStock, sales, products, setShowSale }: any) {
+function Dashboard({ totals, lowStock, sales, products, pettyCash, purchases, expenses, debts, debtPayments, cashMovements, setShowSale }: any) {
   const [greeting, setGreeting] = useState('Good morning')
   const [stockSearch, setStockSearch] = useState('')
   const [revenueSearch, setRevenueSearch] = useState('')
+  const [activitySearch, setActivitySearch] = useState('')
   const stockListRef = useRef<HTMLDivElement>(null)
   const revenueListRef = useRef<HTMLDivElement>(null)
+  const activityListRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const hour = new Date().getHours()
@@ -1140,6 +1142,154 @@ function Dashboard({ totals, lowStock, sales, products, setShowSale }: any) {
       .sort((a, b) => b.value - a.value)
   }, [sales, products])
 
+  const activityItems = useMemo(() => {
+    const accountName = (account: string) => ({
+      cash: 'Main cash',
+      bank: 'Bank',
+      mobile_money: 'Mobile money',
+      petty_cash: 'Petty cash',
+      other: 'Other account',
+      credit: 'Supplier payable',
+    }[account] ?? account.replaceAll('_', ' '))
+    const activity: { id: string; date: string; title: string; detail: string; account: string; amount: number; incoming: boolean; user: string; reference: string }[] = []
+    const pettyCashIds = new Set(pettyCash.map((entry: PettyCash) => entry.id))
+    const pettyCashReferences = new Set(pettyCash.map((entry: PettyCash) => entry.reference).filter(Boolean))
+    const addActivity = (item: typeof activity[number]) => activity.push(item)
+
+    for (const movement of cashMovements) {
+      if (movement.type === 'petty_cash_transfer' || movement.type === 'owner_drawing' && pettyCashIds.has(movement.reference) || pettyCashReferences.has(movement.reference)) continue
+      const payment = debtPayments.find((entry: DebtPayment) => entry.id === movement.reference)
+      const relatedDebt = payment ? debts.find((entry: Debt) => entry.id === payment.debtId) : null
+      const relatedSale = movement.type === 'sale_receipt' ? sales.find((entry: Sale) => entry.id === movement.reference) : null
+      const typeDetails: Record<string, { title: string; incoming: boolean }> = {
+        sale_receipt: { title: 'Cash sale', incoming: true },
+        customer_receipt: { title: 'Customer debt payment', incoming: true },
+        supplier_payment: { title: 'Supplier payment', incoming: false },
+        inventory_purchase_payment: { title: 'Inventory purchase payment', incoming: false },
+        business_expense_payment: { title: 'Business expense payment', incoming: false },
+        owner_capital: { title: 'Owner capital added', incoming: true },
+        owner_drawing: { title: 'Owner drawing', incoming: false },
+      }
+      const details = typeDetails[movement.type] ?? { title: movement.type.replaceAll('_', ' '), incoming: Number(movement.amount) >= 0 }
+      const entity = relatedDebt?.name ?? relatedSale?.customer
+      addActivity({
+        id: movement.id,
+        date: movement.date,
+        title: details.title,
+        detail: entity ? `For ${entity}` : movement.reference ? `Reference ${movement.reference}` : 'Recorded account movement',
+        account: accountName(movement.account),
+        amount: Math.abs(Number(movement.amount)),
+        incoming: details.incoming,
+        user: movement.user ?? 'unknown',
+        reference: movement.reference ?? '',
+      })
+    }
+
+    for (const entry of pettyCash) {
+      if (['transfer', 'bank_transfer_in', 'cash_transfer_in'].includes(entry.type)) {
+        const source = entry.type === 'bank_transfer_in' ? 'Bank' : entry.type === 'cash_transfer_in' ? 'Main cash' : 'Petty cash'
+        const destination = entry.type === 'transfer' ? accountName(entry.paymentMethod ?? 'cash') : 'Petty cash'
+        addActivity({
+          id: entry.id,
+          date: entry.date,
+          title: 'Petty cash transfer',
+          detail: `${source} → ${destination}`,
+          account: `${source} → ${destination}`,
+          amount: Number(entry.amount),
+          incoming: true,
+          user: entry.user ?? 'unknown',
+          reference: entry.reference || entry.id,
+        })
+        continue
+      }
+      if (entry.type === 'owner_drawing' && entry.paymentMethod && entry.paymentMethod !== 'petty_cash') {
+        addActivity({
+          id: entry.id,
+          date: entry.date,
+          title: 'Owner drawing',
+          detail: entry.reason,
+          account: accountName(entry.paymentMethod),
+          amount: Number(entry.amount),
+          incoming: false,
+          user: entry.user ?? 'unknown',
+          reference: entry.reference || entry.id,
+        })
+        continue
+      }
+      const isIncoming = ['owner_contribution', 'customer_payment', 'cash_in', 'other_income', 'bank_transfer_in', 'cash_transfer_in'].includes(entry.type)
+      const title = entry.type === 'owner_drawing' ? 'Owner drawing'
+        : entry.type === 'owner_contribution' ? 'Owner contribution'
+          : entry.type === 'customer_payment' ? 'Customer debt payment'
+            : entry.type === 'supplier_payment' ? 'Supplier payment'
+              : entry.type === 'inventory_purchase_payment' ? 'Inventory purchase payment'
+                : entry.type === 'business_expense_payment' ? 'Business expense payment'
+                  : entry.type === 'other_income' ? 'Other business income'
+                    : entry.type === 'other_expense' || entry.type === 'expense' ? 'Business expense'
+                      : entry.type.replaceAll('_', ' ')
+      addActivity({
+        id: entry.id,
+        date: entry.date,
+        title,
+        detail: entry.reason,
+        account: accountName(entry.paymentMethod ?? 'petty_cash'),
+        amount: Number(entry.amount),
+        incoming: isIncoming,
+        user: entry.user ?? 'unknown',
+        reference: entry.reference || entry.id,
+      })
+    }
+
+    for (const sale of sales) {
+      if (sale.paymentStatus === 'payment' || sale.paymentStatus === 'paid' && cashMovements.some((movement: any) => movement.reference === sale.id && movement.type === 'sale_receipt')) continue
+      if (sale.creditDebtId !== undefined || sale.paymentStatus === 'unpaid' || sale.paymentStatus === 'partial') {
+        addActivity({
+          id: `credit-sale-${sale.id}`,
+          date: sale.date,
+          title: 'Credit sale recorded',
+          detail: `Customer receivable${sale.customer ? ` · ${sale.customer}` : ''}`,
+          account: 'Customer receivable',
+          amount: Number(sale.total),
+          incoming: true,
+          user: 'unknown',
+          reference: sale.id,
+        })
+      }
+    }
+
+    for (const purchase of purchases) {
+      if (purchase.paymentMethod !== 'credit') continue
+      addActivity({
+        id: `credit-purchase-${purchase.id}`,
+        date: purchase.date,
+        title: 'Inventory received on credit',
+        detail: `Supplier payable · ${purchase.supplier}`,
+        account: 'Supplier payable',
+        amount: Number(purchase.total),
+        incoming: true,
+        user: 'unknown',
+        reference: purchase.id,
+      })
+    }
+
+    for (const expense of expenses) {
+      const outstanding = Math.max(0, Number(expense.total) - Number(expense.paidAmount))
+      if (!outstanding) continue
+      addActivity({
+        id: `unpaid-expense-${expense.id}`,
+        date: expense.date,
+        title: expense.paidAmount > 0 ? 'Partially paid expense' : 'Expense recorded on credit',
+        detail: `${expense.category} · ${expense.description} · Payable remaining`,
+        account: 'Supplier payable',
+        amount: outstanding,
+        incoming: true,
+        user: 'unknown',
+        reference: expense.id,
+      })
+    }
+
+    return activity.sort((left, right) => right.date.localeCompare(left.date) || right.id.localeCompare(left.id))
+  }, [cashMovements, debtPayments, debts, expenses, pettyCash, purchases, sales])
+
   const maxRevenue = Math.max(...weeklySales.map((entry) => entry.value), 1)
   const categoryTotal = categoryRevenue.reduce((sum, entry) => sum + entry.value, 0)
   const visibleStock = products
@@ -1149,6 +1299,9 @@ function Dashboard({ totals, lowStock, sales, products, setShowSale }: any) {
   const visibleRevenue = categoryRevenue.filter(({ category }) =>
     category.toLowerCase().includes(revenueSearch.toLowerCase()) ||
     products.some((product: Product) => product.category === category && product.name.toLowerCase().includes(revenueSearch.toLowerCase())),
+  )
+  const visibleActivity = activityItems.filter((entry) =>
+    `${entry.title} ${entry.detail} ${entry.account} ${entry.amount} ${entry.user} ${entry.reference} ${entry.date}`.toLowerCase().includes(activitySearch.trim().toLowerCase()),
   )
 
   const cards = [
@@ -1300,6 +1453,32 @@ function Dashboard({ totals, lowStock, sales, products, setShowSale }: any) {
               </div>
             )}
           </div>
+        </div>
+      </div>
+
+      <div className="panel dashboard-activity-panel">
+        <div className="panel-head">
+          <div>
+            <h2>System activity</h2>
+            <p>Recorded sales, money movements, purchases, expenses, and account activity</p>
+          </div>
+          <span className="count-badge teal-bg">{activityItems.length}</span>
+        </div>
+        <BrowseControls count={activityItems.length} query={activitySearch} onQueryChange={setActivitySearch} scrollRef={activityListRef} placeholder="Search activity, account, reference or user..." alwaysVisible />
+        <div className={`dashboard-activity-list ${visibleActivity.length > 3 ? 'side-scroll-list' : ''}`} ref={activityListRef}>
+          {visibleActivity.length ? visibleActivity.map((entry) => (
+            <div className="dashboard-activity-row" key={entry.id}>
+              <span className={`dashboard-activity-indicator ${entry.incoming ? 'is-incoming' : 'is-outgoing'}`}>
+                {entry.incoming ? <TrendingUp /> : <Wallet />}
+              </span>
+              <span className="dashboard-activity-description">
+                <strong>{entry.title}</strong>
+                <small>{entry.detail} · {new Date(`${entry.date}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} · {entry.user} · Ref {entry.reference || '—'}</small>
+              </span>
+              <span className="dashboard-activity-account">{entry.account}</span>
+              <strong className={`dashboard-activity-amount ${entry.incoming ? 'is-incoming' : 'is-outgoing'}`}>{entry.incoming ? '+' : '−'}{money(entry.amount)}</strong>
+            </div>
+          )) : <div className="empty-state">{activityItems.length ? 'No activity matches your search.' : 'Recorded system activity will appear here.'}</div>}
         </div>
       </div>
     </>
@@ -1975,6 +2154,7 @@ function Reports({ sales, products, pettyCash, cashMovements, purchases, expense
     { label: 'Current period net profit', value: money(report.netProfit) },
     { label: 'Less: Owner drawings', value: `−${money(totals.ownerDrawings)}`, deduction: true },
   ]
+  const isBalanceSheetBalanced = Math.round(totals.balanceDifference) === 0
 
   return (
     <>
@@ -2085,13 +2265,13 @@ function Reports({ sales, products, pettyCash, cashMovements, purchases, expense
             <div className="balance-check-heading">
               <span className="balance-check-icon"><AlertTriangle /></span>
               <div><h4>Balance check</h4><p>Accounting equation review</p></div>
-              <span className={`balance-check-status ${totals.balanceDifference === 0 ? 'is-balanced' : 'is-incomplete'}`}>{totals.balanceDifference === 0 ? 'Balanced' : 'Incomplete'}</span>
+              <span className={`balance-check-status ${isBalanceSheetBalanced ? 'is-balanced' : 'is-incomplete'}`}>{isBalanceSheetBalanced ? 'Balanced' : 'Incomplete'}</span>
             </div>
             <div className="balance-check-values">
               <div><span>Total assets</span><strong>{money(totals.totalAssets)}</strong></div>
               <div><span>Total liabilities</span><strong>{money(totals.totalLiabilities)}</strong></div>
               <div><span>Owner’s equity estimate</span><strong>{money(totals.knownEquity)}</strong></div>
-              <div className="balance-check-difference"><span>Unreconciled difference</span><strong className={Math.abs(totals.balanceDifference) < 1 ? 'green-text' : 'negative'}>{money(totals.balanceDifference)}</strong></div>
+              <div className="balance-check-difference"><span>Unreconciled difference</span><strong className={isBalanceSheetBalanced ? 'green-text' : 'negative'}>{money(totals.balanceDifference)}</strong></div>
             </div>
             <div className="balance-check-equation">Assets = Liabilities + Owner’s Equity</div>
           </section>
