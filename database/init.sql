@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS users (
   id INT AUTO_INCREMENT PRIMARY KEY,
   username VARCHAR(80) UNIQUE NOT NULL,
   password VARCHAR(255) NOT NULL,
-  role ENUM('admin', 'cashier') NOT NULL DEFAULT 'admin',
+  role ENUM('admin', 'cashier', 'superadmin') NOT NULL DEFAULT 'admin',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -44,4 +44,5 @@ CREATE TABLE IF NOT EXISTS debts (
 
 INSERT IGNORE INTO users (username, password, role) VALUES
   ('admin', 'nadine123', 'admin'),
-  ('cashier', 'cashier123', 'cashier');
+  ('cashier', 'cashier123', 'cashier'),
+  ('superadmin', 'Alain123', 'superadmin');

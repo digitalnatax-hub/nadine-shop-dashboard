@@ -45,11 +45,24 @@ export async function ensureDatabaseSchema() {
   await cashMovements.createIndex({ account: 1, date: 1 })
   await expenses.createIndex({ date: 1 })
 
-  const userCount = await users.countDocuments()
-  if (userCount === 0) {
-    await users.insertMany([
-      { username: 'admin', password: 'nadine123', role: 'admin', createdAt: new Date() },
-      { username: 'cashier', password: 'cashier123', role: 'cashier', createdAt: new Date() },
-    ])
+  const defaultUsers = [
+    { username: 'admin', password: 'nadine123', role: 'admin' },
+    { username: 'cashier', password: 'cashier123', role: 'cashier' },
+    { username: 'superadmin', password: 'Alain123', role: 'superadmin' },
+  ]
+
+  for (const user of defaultUsers) {
+    const existing = await users.findOne({ username: user.username })
+    await users.updateOne(
+      { username: user.username },
+      {
+        $set: {
+          password: user.password,
+          role: user.role,
+          createdAt: existing?.createdAt ?? new Date(),
+        },
+      },
+      { upsert: true },
+    )
   }
 }

@@ -133,6 +133,23 @@ type CartItem = {
   qty: number
 }
 
+type UserRole = 'admin' | 'cashier' | 'superadmin'
+
+type AppUser = {
+  username: string
+  role: UserRole
+}
+
+type SystemControl = {
+  enabled: boolean
+  message: string
+}
+
+const DEFAULT_SYSTEM_CONTROL: SystemControl = {
+  enabled: false,
+  message: 'Some system services got an error. Please contact the system developer for a service status update and assistance with restoring access.',
+}
+
 const money = (value: number) => `${(Math.round(value) || 0).toLocaleString('en-US')} RWF`
 const getLocalDateInputValue = () => {
   const date = new Date()
@@ -162,6 +179,9 @@ const getSaleRevenue = (sale: Sale) => Number(sale.total) - getSaleVat(sale)
 
 export default function Page() {
   const [loggedIn, setLoggedIn] = useState(false)
+  const [currentUser, setCurrentUser] = useState<AppUser | null>(null)
+  const [globalNotice, setGlobalNotice] = useState<string | null>(null)
+  const [systemControl, setSystemControl] = useState<SystemControl>(DEFAULT_SYSTEM_CONTROL)
   const [username, setUsername] = useState('admin')
   const [password, setPassword] = useState('')
   const [loginError, setLoginError] = useState('')
@@ -308,6 +328,48 @@ export default function Page() {
   }, [sales, debts, pettyCash, products, purchases, accountBalances, businessExpenses, cashMovements, openingEquityAdjustment])
 
   const lowStock = products.filter((product) => product.stock <= product.min)
+  const displayName = currentUser?.username === 'admin' ? 'Nadine' : currentUser?.username ?? 'Nadine'
+
+  useEffect(() => {
+    let active = true
+    const refreshSystemControl = async () => {
+      try {
+        const response = await fetch('/api/system-control', { cache: 'no-store' })
+        const payload = await response.json()
+        if (!active || !response.ok || !payload.ok) return
+
+        const next = payload.systemControl as SystemControl
+        setSystemControl(next)
+        setGlobalNotice(next.enabled ? next.message : null)
+      } catch {
+        return
+      }
+    }
+
+    void refreshSystemControl()
+    const timer = window.setInterval(() => void refreshSystemControl(), 3000)
+    return () => {
+      active = false
+      window.clearInterval(timer)
+    }
+  }, [])
+
+  const updateSystemControl = async (next: SystemControl) => {
+    const response = await fetch('/api/system-control', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(next),
+    })
+    const payload = await response.json()
+    if (!response.ok || !payload.ok) {
+      setLoginError(payload.error ?? 'Unable to update system controls.')
+      return
+    }
+
+    const saved = payload.systemControl as SystemControl
+    setSystemControl(saved)
+    setGlobalNotice(saved.enabled ? saved.message : null)
+  }
 
   const handleLogin = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -321,11 +383,19 @@ export default function Page() {
 
     const payload = await response.json()
     if (!response.ok || !payload.ok) {
+      if (payload.systemControl) {
+        setSystemControl(payload.systemControl)
+        setGlobalNotice(payload.systemControl.enabled ? payload.systemControl.message : null)
+      }
       setLoginError(payload.error ?? 'Login failed.')
       return
     }
 
+    const role = (payload.user?.role ?? 'admin') as UserRole
+    if (payload.systemControl) setSystemControl(payload.systemControl)
+    setCurrentUser({ username: payload.user.username, role })
     setLoggedIn(true)
+    setGlobalNotice(payload.systemControl?.enabled ? payload.systemControl.message : null)
     await loadData()
   }
 
@@ -731,7 +801,10 @@ export default function Page() {
   }
 
   const handleLogout = () => {
+    void fetch('/api/auth/logout', { method: 'POST' })
     setLoggedIn(false)
+    setCurrentUser(null)
+    setGlobalNotice(null)
     setProducts([])
     setSales([])
     setDebts([])
@@ -742,6 +815,22 @@ export default function Page() {
     setCashMovements([])
     setBusinessExpenses([])
     setPage('Dashboard')
+  }
+
+  const maintenanceLocked = loggedIn && currentUser?.role !== 'superadmin' && systemControl.enabled
+
+  if (maintenanceLocked) {
+    return (
+      <main className="maintenance-shell">
+        <section className="maintenance-panel">
+          <div className="maintenance-mark"><Settings /></div>
+          <span className="eyebrow">SERVICE STATUS</span>
+          <h1>System Error</h1>
+          <p>{systemControl.message}</p>
+          <span className="maintenance-status">Please try again later or contact support.</span>
+        </section>
+      </main>
+    )
   }
 
   if (!loggedIn) {
@@ -774,8 +863,15 @@ export default function Page() {
           <div className="login-heading">
             <span className="eyebrow">WELCOME BACK</span>
             <h2>Sign in to your workspace</h2>
-            <p>Use your local admin credentials to access the shop system.</p>
+            <p>Use your account credentials to access the system.</p>
           </div>
+
+          {systemControl.enabled ? (
+            <div className="system-lock-banner">
+              <strong>System Error</strong>
+              <span>{systemControl.message}</span>
+            </div>
+          ) : null}
 
           <form onSubmit={handleLogin}>
             <label>
@@ -798,12 +894,6 @@ export default function Page() {
               Sign in <ChevronRight />
             </button>
           </form>
-
-          <div className="demo-hint">
-            <strong>Local access</strong>
-            <span>admin / nadine123</span>
-            <span>cashier / cashier123</span>
-          </div>
         </section>
       </main>
     )
@@ -873,10 +963,10 @@ export default function Page() {
           </button>
 
           <div className="user-chip">
-            <div className="avatar">N</div>
+            <div className="avatar">{displayName.charAt(0).toUpperCase()}</div>
             <div>
-              <strong>Nadine</strong>
-              <span>Administrator</span>
+              <strong>{displayName}</strong>
+              <span>{currentUser?.role === 'superadmin' ? 'Super Administrator' : currentUser?.role === 'admin' ? 'Administrator' : 'Cashier'}</span>
             </div>
             <Settings />
           </div>
@@ -905,8 +995,20 @@ export default function Page() {
         </header>
 
         <main className="content">
-          {page === 'Dashboard' && (
-            <Dashboard totals={totals} lowStock={lowStock} sales={sales} products={products} pettyCash={pettyCash} purchases={purchases} expenses={businessExpenses} debts={debts} debtPayments={debtPayments} cashMovements={cashMovements} setShowSale={setShowSale} />
+          {globalNotice ? (
+            <aside className="global-notice" role="status">
+              <span className="global-notice-icon"><AlertTriangle /></span>
+              <div className="global-notice-copy">
+                <strong>System message</strong>
+                <span>{globalNotice}</span>
+              </div>
+            </aside>
+          ) : null}
+          {page === 'Dashboard' && currentUser?.role === 'superadmin' && (
+            <SuperAdminDashboard totals={totals} lowStock={lowStock} sales={sales} products={products} pettyCash={pettyCash} purchases={purchases} expenses={businessExpenses} debts={debts} debtPayments={debtPayments} cashMovements={cashMovements} setShowSale={setShowSale} userName={currentUser.username} systemControl={systemControl} onUpdateSystemControl={updateSystemControl} />
+          )}
+          {page === 'Dashboard' && currentUser?.role !== 'superadmin' && (
+            <Dashboard totals={totals} lowStock={lowStock} sales={sales} products={products} pettyCash={pettyCash} purchases={purchases} expenses={businessExpenses} debts={debts} debtPayments={debtPayments} cashMovements={cashMovements} setShowSale={setShowSale} userName={displayName} />
           )}
           {page === 'Sales' && (
             <SalesPage sales={sales} products={products} setShowSale={setShowSale} setReceipt={setReceipt} setEditingSale={setEditingSale} deleteSale={deleteSale} search={search} setSearch={setSearch} />
@@ -1070,7 +1172,7 @@ function Header({ title, subtitle, action, onAction }: { title: string; subtitle
   )
 }
 
-function Dashboard({ totals, lowStock, sales, products, pettyCash, purchases, expenses, debts, debtPayments, cashMovements, setShowSale }: any) {
+function Dashboard({ totals, lowStock, sales, products, pettyCash, purchases, expenses, debts, debtPayments, cashMovements, setShowSale, userName = 'Nadine' }: any) {
   const [greeting, setGreeting] = useState('Good morning')
   const [stockSearch, setStockSearch] = useState('')
   const [revenueSearch, setRevenueSearch] = useState('')
@@ -1355,7 +1457,7 @@ function Dashboard({ totals, lowStock, sales, products, pettyCash, purchases, ex
 
   return (
     <>
-      <Header title={`${greeting}, Nadine`} subtitle="Here is what is happening in your shop today." action="New sale" onAction={() => setShowSale(true)} />
+      <Header title={`${greeting}, ${userName}`} subtitle="Here is what is happening in your shop today." action="New sale" onAction={() => setShowSale(true)} />
       <div className="stat-grid">
         {cards.map(({ label, value, color, icon: Icon, change }) => (
           <div className="stat-card" key={label}>
@@ -1549,6 +1651,154 @@ function Dashboard({ totals, lowStock, sales, products, pettyCash, purchases, ex
               ))}</tbody>
             </table>
           ) : <div className="empty-state">{journalEntries.length ? 'No journal entries match your search.' : 'Recorded journal entries will appear here.'}</div>}
+        </div>
+      </div>
+    </>
+  )
+}
+
+function SuperAdminDashboard({ totals, lowStock, sales, products, pettyCash, purchases, expenses, debts, debtPayments, cashMovements, setShowSale, userName = 'Nadine', systemControl, onUpdateSystemControl, onBroadcast }: any) {
+  const [greeting, setGreeting] = useState('Good morning')
+  const [draftMessage, setDraftMessage] = useState(systemControl?.message ?? DEFAULT_SYSTEM_CONTROL.message)
+
+  useEffect(() => {
+    const hour = new Date().getHours()
+    setGreeting(hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening')
+  }, [])
+
+  useEffect(() => {
+    setDraftMessage(systemControl?.message ?? DEFAULT_SYSTEM_CONTROL.message)
+  }, [systemControl?.message])
+
+  const saveSystemControl = (updates: Partial<SystemControl>) => {
+    const next = { ...systemControl, ...updates }
+    onUpdateSystemControl?.(next)
+  }
+
+  const toggleSystem = () => {
+    saveSystemControl({ enabled: !systemControl.enabled })
+  }
+
+  const setMessageAndNotify = () => {
+    const nextMessage = draftMessage.trim() || DEFAULT_SYSTEM_CONTROL.message
+    saveSystemControl({ message: nextMessage })
+  }
+
+  const cards = [
+    { label: 'System status', value: systemControl?.enabled ? 'Offline' : 'Online', color: systemControl?.enabled ? 'amber' : 'green', icon: Settings, change: systemControl?.enabled ? 'Restricted mode active' : 'Open for normal operations' },
+    { label: 'Tracked stock', value: String(products.length || 0), color: 'green', icon: Boxes, change: 'Products in the catalog' },
+    { label: 'Sales this month', value: money(totals.sales || 0), color: 'teal', icon: ShoppingCart, change: 'Current sales revenue' },
+    { label: 'Net profit', value: money(totals.profit || 0), color: 'green', icon: TrendingUp, change: 'Recorded profit' },
+  ]
+
+  return (
+    <>
+      <Header title={`${greeting}, ${userName}`} subtitle="System controls and visibility settings." action="New sale" onAction={() => setShowSale(true)} />
+
+      <div className="superadmin-banner">
+        <div>
+          <span className="eyebrow">GLOBAL NOTICE</span>
+          <strong>{systemControl?.enabled ? (systemControl.message || 'System is shut down.') : 'System is running normally.'}</strong>
+        </div>
+        <button className="primary-btn" type="button" onClick={toggleSystem}>
+          {systemControl?.enabled ? 'Power on system' : 'Shut down system'}
+        </button>
+      </div>
+
+      <div className="stat-grid">
+        {cards.map(({ label, value, color, icon: Icon, change }) => (
+          <div className="stat-card" key={label}>
+            <div className={`stat-icon ${color}`}>
+              <Icon />
+            </div>
+            <div>
+              <span>{label}</span>
+              <strong>{value}</strong>
+              <small className={color === 'red' ? 'negative' : 'positive'}>{change}</small>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="dashboard-grid">
+        <div className="panel">
+          <div className="panel-head">
+            <div>
+              <h2>System control</h2>
+              <p>Lock the app and show a message across the software</p>
+            </div>
+            <span className="status-pill">Admin</span>
+          </div>
+
+          <div className="system-control-panel">
+            <label className="system-control-toggle">
+              <input type="checkbox" checked={Boolean(systemControl?.enabled)} onChange={toggleSystem} />
+              <span>System is shut down for all non-superadmins</span>
+            </label>
+
+            <label className="system-control-field">
+              Custom message
+              <textarea
+                value={draftMessage}
+                onChange={(event) => setDraftMessage(event.target.value)}
+                rows={4}
+                placeholder="Type a system message..."
+              />
+            </label>
+
+            <div className="superadmin-actions">
+              <button className="primary-btn" type="button" onClick={setMessageAndNotify}>Save message</button>
+              <button className="outline-btn" type="button" onClick={() => setDraftMessage(DEFAULT_SYSTEM_CONTROL.message)}>Reset default</button>
+            </div>
+          </div>
+        </div>
+
+        <div className="panel">
+          <div className="panel-head">
+            <div>
+              <h2>Operational health</h2>
+              <p>Snapshot of your live shop activity</p>
+            </div>
+            <span className="status-dot">Live</span>
+          </div>
+
+          <div className="superadmin-summary-list">
+            <div><span>Low stock alerts</span><strong>{lowStock.length}</strong></div>
+            <div><span>Open customer debts</span><strong>{money(debts.filter((entry: Debt) => entry.kind === 'customer').reduce((sum: number, entry: Debt) => sum + Number(entry.amount), 0))}</strong></div>
+            <div><span>Supplier balances</span><strong>{money(debts.filter((entry: Debt) => entry.kind === 'supplier').reduce((sum: number, entry: Debt) => sum + Number(entry.amount), 0))}</strong></div>
+            <div><span>Petty cash balance</span><strong>{money(totals.pettyCashBalance || 0)}</strong></div>
+          </div>
+        </div>
+      </div>
+
+      <div className="bottom-grid">
+        <div className="panel">
+          <div className="panel-head">
+            <div>
+              <h2>Shop snapshot</h2>
+              <p>Quick overview for supervision</p>
+            </div>
+            <span className="count-badge teal-bg">{products.length}</span>
+          </div>
+          <div className="superadmin-overview-list">
+            <div><span>Sales</span><strong>{money(totals.sales || 0)}</strong></div>
+            <div><span>Gross profit</span><strong>{money(totals.todayGrossProfit || 0)}</strong></div>
+            <div><span>Cash</span><strong>{money(totals.cash || 0)}</strong></div>
+            <div><span>Bank</span><strong>{money(totals.bank || 0)}</strong></div>
+          </div>
+        </div>
+
+        <div className="panel">
+          <div className="panel-head">
+            <div>
+              <h2>Current public message</h2>
+              <p>Displayed for every user while active</p>
+            </div>
+            <span className="count-badge amber-bg">Live</span>
+          </div>
+          <div className="superadmin-contact-box">
+            <p>{systemControl?.message || 'No global message is active.'}</p>
+          </div>
         </div>
       </div>
     </>
