@@ -1,12 +1,16 @@
 import { Db, Document, MongoClient } from 'mongodb'
 
-const uri = process.env.MONGODB_URI ?? 'mongodb://127.0.0.1:27017'
+const uri = process.env.MONGODB_URI
 const dbName = process.env.MONGODB_DB_NAME ?? 'nadine_shop'
 
-const client = new MongoClient(uri)
+const client = uri ? new MongoClient(uri) : null
 let cachedDb: Db | null = null
 
 export async function getDb() {
+  if (!client) {
+    throw new Error('MONGODB_URI is not configured. Set it in .env.local or the deployment environment.')
+  }
+
   if (cachedDb) {
     return cachedDb
   }
@@ -50,16 +54,14 @@ export async function ensureDatabaseSchema() {
     { username: 'cashier', password: 'cashier123', role: 'cashier' },
     { username: 'superadmin', password: 'Alain123', role: 'superadmin' },
   ]
-
   for (const user of defaultUsers) {
-    const existing = await users.findOne({ username: user.username })
     await users.updateOne(
       { username: user.username },
       {
-        $set: {
+        $setOnInsert: {
           password: user.password,
           role: user.role,
-          createdAt: existing?.createdAt ?? new Date(),
+          createdAt: new Date(),
         },
       },
       { upsert: true },

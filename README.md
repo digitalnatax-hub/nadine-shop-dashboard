@@ -10,6 +10,12 @@ This repository is linked to a [v0](https://v0.app) project. You can continue de
 
 ## Getting Started
 
+### Configure MongoDB
+
+The app requires a MongoDB connection. Copy `.env.example` to `.env.local` and set `MONGODB_URI` to the connection string for your MongoDB database. `MONGODB_DB_NAME` defaults to `nadine_shop`.
+
+For a Render deployment, set `MONGODB_URI` (and, if needed, `MONGODB_DB_NAME`) in the web service's Environment settings. Make sure the database is running and allows connections from the web service. Do not commit `.env.local` or share its connection string.
+
 First, run the development server:
 
 ```bash
