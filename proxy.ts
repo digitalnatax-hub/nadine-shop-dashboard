@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getCollection } from '@/lib/db'
 import { readSessionToken, SESSION_COOKIE } from '@/lib/session'
 
 const excludedPaths = new Set([
@@ -14,22 +15,18 @@ export async function proxy(request: NextRequest) {
   if (session?.role === 'superadmin') return NextResponse.next()
 
   try {
-    const statusUrl = new URL('/api/system-control', request.url)
-    const response = await fetch(statusUrl, { cache: 'no-store' })
-    if (!response.ok) {
-      return NextResponse.json({ ok: false, error: 'Unable to verify system status.' }, { status: 503 })
-    }
-
-    const payload = await response.json()
-    if (payload.systemControl?.enabled) {
+    const settings = await getCollection<any>('system_settings')
+    const savedControl = await settings.findOne({ id: 'system-control' })
+    if (savedControl?.enabled) {
       return NextResponse.json({
         ok: false,
-        error: payload.systemControl.message || 'System Error: service is temporarily unavailable.',
+        error: savedControl.message || 'System Error: service is temporarily unavailable.',
       }, { status: 423 })
     }
 
     return NextResponse.next()
-  } catch {
+  } catch (error) {
+    console.error('Unable to verify system status for API request.', error)
     return NextResponse.json({ ok: false, error: 'Unable to verify system status.' }, { status: 503 })
   }
 }
